@@ -46,6 +46,7 @@ namespace AllLive.Core.Danmaku
         private DanmuInfo danmuInfo;
         private string buvid;
         private BiliDanmakuArgs Args;
+        private static volatile bool _forceLegacyProtover;
 
         public BiliBiliDanmaku()
         {
@@ -60,7 +61,7 @@ namespace AllLive.Core.Danmaku
                 {
                     roomid = roomId,
                     uid = Args.UserId,
-                    protover = 2,
+                    protover = _forceLegacyProtover ? 2 : 3,
                     key = danmuInfo.token,
                     platform = "web",
                     type = 2,
@@ -192,7 +193,7 @@ namespace AllLive.Core.Danmaku
             else if (operation == 5)
             {
 
-                if (protocolVersion == 2)//|| protocolVersion == 3
+                if (protocolVersion == 2 || protocolVersion == 3)
                 {
                     body = DecompressData(body, protocolVersion);
                 }
@@ -338,29 +339,45 @@ namespace AllLive.Core.Danmaku
         /// <summary>
         /// 解压数据 (使用Brotli)
         /// </summary>
-        /// <param name="data"></param>
-        /// <returns></returns>
         private byte[] DecompressDataWithBrotli(byte[] data)
         {
+            try
+            {
+                using (var decompressedStream = new BrotliStream(new MemoryStream(data), CompressionMode.Decompress))
+                using (var outBuffer = new MemoryStream())
+                {
+                    decompressedStream.CopyTo(outBuffer);
+                    return outBuffer.ToArray();
+                }
+            }
+            catch (PlatformNotSupportedException ex)
+            {
+                Trace.WriteLine($"Brotli decompression is not supported on this platform: {ex.Message}");
+                return HandleBrotliUnavailable();
+            }
+            catch (TypeLoadException ex)
+            {
+                Trace.WriteLine($"Brotli decompression runtime type is unavailable: {ex.Message}");
+                return HandleBrotliUnavailable();
+            }
+            catch (MissingMethodException ex)
+            {
+                Trace.WriteLine($"Brotli decompression runtime method is unavailable: {ex.Message}");
+                return HandleBrotliUnavailable();
+            }
 
-            //using (var decompressedStream = new BrotliStream(new MemoryStream(data), CompressionMode.Decompress))
-            //{
-            //    using (var outBuffer = new MemoryStream())
-            //    {
-            //        var block = new byte[1024];
-            //        while (true)
-            //        {
-            //            var bytesRead = decompressedStream.Read(block, 0, block.Length);
-            //            if (bytesRead <= 0)
-            //                break;
-            //            outBuffer.Write(block, 0, bytesRead);
-            //        }
-            //        return outBuffer.ToArray();
-            //    }
-            //}
-            throw new NotImplementedException();
+            return Array.Empty<byte>();
+        }
 
+        private byte[] HandleBrotliUnavailable()
+        {
+            if (!_forceLegacyProtover)
+            {
+                _forceLegacyProtover = true;
+                SendSystemMessage("当前平台不支持哔哩哔哩 Brotli 弹幕，请重新进入房间以切换兼容模式。");
+            }
 
+            return Array.Empty<byte>();
         }
         private async Task<(string buvid3, string buvid4)> GetBuvid()
         {
@@ -426,7 +443,7 @@ namespace AllLive.Core.Danmaku
 
         private void SendSystemMessage(string msg)
         {
-            NewMessage(this, new LiveMessage()
+            NewMessage?.Invoke(this, new LiveMessage()
             {
                 Type = LiveMessageType.Chat,
                 UserName = "系统",

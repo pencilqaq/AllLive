@@ -46,10 +46,11 @@ namespace AllLive.Core
 
         private async Task<Dictionary<string, string>> GetRequestHeaders(bool forceRefresh = false)
         {
-            // 如果已有Cookie且不需要强制刷新，直接返回
+            // 如果已有Cookie且不需要强制刷新，直接返回副本
             if (!forceRefresh && (headers.ContainsKey("Cookie") || headers.ContainsKey("cookie")))
             {
-                return headers;
+                // 返回副本，防止调用方修改（如写入动态 Referer）污染共享实例
+                return new Dictionary<string, string>(headers);
             }
             
             // 优先使用用户登录的Cookie，否则使用默认Cookie
@@ -61,7 +62,8 @@ namespace AllLive.Core
             {
                 headers["Cookie"] = DEFAULT_COOKIE;
             }
-            return headers;
+            // 返回副本
+            return new Dictionary<string, string>(headers);
         }
 
         public async Task<List<LiveCategory>> GetCategores()

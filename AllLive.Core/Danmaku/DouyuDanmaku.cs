@@ -86,8 +86,9 @@ namespace AllLive.Core.Danmaku
                 }
 
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Trace.WriteLine($"[DouyuDanmaku] Ws_OnMessage error: {ex.Message}");
             }
         }
 
@@ -205,9 +206,9 @@ namespace AllLive.Core.Danmaku
                 }
 
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-
+                Trace.WriteLine($"[DouyuDanmaku] DeserializeDouyu error: {ex.Message}");
                 return "";
             }
 
@@ -230,6 +231,11 @@ namespace AllLive.Core.Danmaku
                 foreach (var field in str.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries))
                 {
                     var tokens = field.Split(new[] { "@=" }, StringSplitOptions.None);
+                    if (tokens.Length < 2)
+                    {
+                        Trace.WriteLine($"[DouyuDanmaku] malformed STT field (missing @=): {field}");
+                        continue;
+                    }
                     var k = tokens[0];
                     var v = UnscapeSlashAt(tokens[1]);
                     result[k] = SttToJObject(v);

@@ -110,8 +110,10 @@ namespace AllLive.Core.Helper
                 List<KeyValuePair<string, string>> body = new List<KeyValuePair<string, string>>();
                 foreach (var item in data.Split('&'))
                 {
-                    var splits = item.Split('=');
-                    body.Add(new KeyValuePair<string, string>(splits[0], splits[1]));
+                    // Split on first '=' only; values may themselves contain '=' (e.g. base64).
+                    // A key with no '=' gets an empty string value rather than IndexOutOfRangeException.
+                    var splits = item.Split(new char[] { '=' }, 2);
+                    body.Add(new KeyValuePair<string, string>(splits[0], splits.Length > 1 ? splits[1] : ""));
                 }
                 request.Content = new FormUrlEncodedContent(body);
                 var result = await SharedClient.SendAsync(request).ConfigureAwait(false);

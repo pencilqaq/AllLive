@@ -19,6 +19,7 @@
     <PackageReference Include="QuickJS.NET" Version="0.0.3">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="System.IO.Compression.Brotli" Version="4.7.0" />
     <PackageReference Include="System.Diagnostics.TraceSource" Version="4.3.0" />
     <PackageReference Include="WebSocketSharp-netstandard-customheaders" Version="1.0.3" />
   </ItemGroup>

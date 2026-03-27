@@ -2,6 +2,7 @@
 using AllLive.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using AllLive.Core.Danmaku;
 using AllLive.Core.Helper;
@@ -387,6 +388,8 @@ namespace AllLive.Core
         private string _accessId;
         private string _imgKey;
         private string _subKey;
+        private readonly SemaphoreSlim _wbiKeysSemaphore = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim _accessIdSemaphore = new SemaphoreSlim(1, 1);
         private int[] mixinKeyEncTab = new int[] {
             46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
             33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
@@ -399,21 +402,34 @@ namespace AllLive.Core
             {
                 return (_imgKey, _subKey);
             }
-            // 获取最新的 img_key 和 sub_key
-            var response = await HttpUtil.GetString(
-                "https://api.bilibili.com/x/web-interface/nav",
-                headers: await GetRequestHeader());
-            var obj = JObject.Parse(response);
+            await _wbiKeysSemaphore.WaitAsync();
+            try
+            {
+                // 二次检查：等锁期间另一协程可能已完成初始化
+                if (_imgKey != null && _subKey != null)
+                {
+                    return (_imgKey, _subKey);
+                }
+                // 获取最新的 img_key 和 sub_key
+                var response = await HttpUtil.GetString(
+                    "https://api.bilibili.com/x/web-interface/nav",
+                    headers: await GetRequestHeader());
+                var obj = JObject.Parse(response);
 
-            var imgUrl = obj["data"]["wbi_img"]["img_url"].ToString();
-            var subUrl = obj["data"]["wbi_img"]["sub_url"].ToString();
-            var imgKey = imgUrl.Substring(imgUrl.LastIndexOf('/') + 1).Split('.')[0];
-            var subKey = subUrl.Substring(subUrl.LastIndexOf('/') + 1).Split('.')[0];
+                var imgUrl = obj["data"]["wbi_img"]["img_url"].ToString();
+                var subUrl = obj["data"]["wbi_img"]["sub_url"].ToString();
+                var imgKey = imgUrl.Substring(imgUrl.LastIndexOf('/') + 1).Split('.')[0];
+                var subKey = subUrl.Substring(subUrl.LastIndexOf('/') + 1).Split('.')[0];
 
-            _imgKey = imgKey;
-            _subKey = subKey;
+                _imgKey = imgKey;
+                _subKey = subKey;
 
-            return (imgKey, subKey);
+                return (imgKey, subKey);
+            }
+            finally
+            {
+                _wbiKeysSemaphore.Release();
+            }
         }
 
         private string GetMixinKey(string origin)
@@ -471,20 +487,32 @@ namespace AllLive.Core
             {
                 return _accessId;
             }
-
-            var response = await HttpUtil.GetString(
-                "https://live.bilibili.com/lol",
-                headers: await GetRequestHeader());
-            // 通过正则表达式"access_id":"(.*?)"提取
-            var match = Regex.Match(response, "\"access_id\":\"(.*?)\"");
-            if (match.Success)
+            await _accessIdSemaphore.WaitAsync();
+            try
             {
-                _accessId = match.Groups[1].Value;
-                return _accessId;
+                // 二次检查：等锁期间另一协程可能已完成初始化
+                if (!string.IsNullOrEmpty(_accessId))
+                {
+                    return _accessId;
+                }
+                var response = await HttpUtil.GetString(
+                    "https://live.bilibili.com/lol",
+                    headers: await GetRequestHeader());
+                // 通过正则表达式"access_id":"(.*?)"提取
+                var match = Regex.Match(response, "\"access_id\":\"(.*?)\"");
+                if (match.Success)
+                {
+                    _accessId = match.Groups[1].Value;
+                    return _accessId;
+                }
+                else
+                {
+                    throw new Exception("无法获取 access_id");
+                }
             }
-            else
+            finally
             {
-                throw new Exception("无法获取 access_id");
+                _accessIdSemaphore.Release();
             }
         }
     }
