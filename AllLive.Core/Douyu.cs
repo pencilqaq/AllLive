@@ -29,23 +29,27 @@ namespace AllLive.Core
             List<LiveCategory> categories = new List<LiveCategory>();
             var result = await HttpUtil.GetString("https://m.douyu.com/api/cate/list");
             var obj = JObject.Parse(result);
-            var cate1 = obj["data"]["cate1Info"] as JArray;
-            var cate2 = obj["data"]["cate2Info"] as JArray;
+            var cate1 = obj["data"]?["cate1Info"] as JArray;
+            var cate2 = obj["data"]?["cate2Info"] as JArray;
+            if (cate1 == null) return new List<LiveCategory>();
             foreach (var item in cate1)
             {
-                var cate1Id = item["cate1Id"].ToString();
-                var cate1Name = item["cate1Name"].ToString();
+                var cate1Id = item["cate1Id"]?.ToString() ?? "";
+                var cate1Name = item["cate1Name"]?.ToString() ?? "";
                 List<LiveSubCategory> subCategories = new List<LiveSubCategory>();
-                cate2.Where(x => x["cate1Id"].ToString() == cate1Id).ToList().ForEach(element =>
+                if (cate2 != null)
                 {
-                    subCategories.Add(new LiveSubCategory()
+                    cate2.Where(x => x["cate1Id"]?.ToString() == cate1Id).ToList().ForEach(element =>
                     {
-                        Pic = element["icon"].ToString(),
-                        ID = element["cate2Id"].ToString(),
-                        ParentID = cate1Id,
-                        Name = element["cate2Name"].ToString(),
+                        subCategories.Add(new LiveSubCategory()
+                        {
+                            Pic = element["icon"]?.ToString() ?? "",
+                            ID = element["cate2Id"]?.ToString() ?? "",
+                            ParentID = cate1Id,
+                            Name = element["cate2Name"]?.ToString() ?? "",
+                        });
                     });
-                });
+                }
                
                 categories.Add(
                   new LiveCategory()
@@ -72,19 +76,23 @@ namespace AllLive.Core
             var result = await HttpUtil.GetString($"https://www.douyu.com/gapi/rkc/directory/mixList/2_{ category.ID}/{page}");
             var obj = JObject.Parse(result);
 
-            foreach (var item in obj["data"]["rl"])
+            var rl = obj["data"]?["rl"] as JArray;
+            if (rl != null)
             {
-                if (item["type"].ToInt32() == 1)
-                    categoryResult.Rooms.Add(new LiveRoomItem()
-                    {
-                        Cover = item["rs16"].ToString(),
-                        Online = item["ol"].ToInt32(),
-                        RoomID = item["rid"].ToString(),
-                        Title = item["rn"].ToString(),
-                        UserName = item["nn"].ToString(),
-                    });
+                foreach (var item in rl)
+                {
+                    if ((item["type"]?.ToObject<int>() ?? 0) == 1)
+                        categoryResult.Rooms.Add(new LiveRoomItem()
+                        {
+                            Cover = item["rs16"]?.ToString() ?? "",
+                            Online = item["ol"]?.ToObject<int>() ?? 0,
+                            RoomID = item["rid"]?.ToString() ?? "",
+                            Title = item["rn"]?.ToString() ?? "",
+                            UserName = item["nn"]?.ToString() ?? "",
+                        });
+                }
             }
-            categoryResult.HasMore = page < obj["data"]["pgcnt"].ToInt32();
+            categoryResult.HasMore = page < (obj["data"]?["pgcnt"]?.ToObject<int>() ?? 0);
             return categoryResult;
         }
         public async Task<LiveCategoryResult> GetRecommendRooms(int page = 1)
@@ -96,18 +104,22 @@ namespace AllLive.Core
             };
             var result = await HttpUtil.GetString($"https://www.douyu.com/japi/weblist/apinc/allpage/6/{page}");
             var obj = JObject.Parse(result);
-            foreach (var item in obj["data"]["rl"])
+            var recRl = obj["data"]?["rl"] as JArray;
+            if (recRl != null)
             {
-                categoryResult.Rooms.Add(new LiveRoomItem()
+                foreach (var item in recRl)
                 {
-                    Cover = item["rs16"].ToString(),
-                    Online = item["ol"].ToInt32(),
-                    RoomID = item["rid"].ToString(),
-                    Title = item["rn"].ToString(),
-                    UserName = item["nn"].ToString(),
-                });
+                    categoryResult.Rooms.Add(new LiveRoomItem()
+                    {
+                        Cover = item["rs16"]?.ToString() ?? "",
+                        Online = item["ol"]?.ToObject<int>() ?? 0,
+                        RoomID = item["rid"]?.ToString() ?? "",
+                        Title = item["rn"]?.ToString() ?? "",
+                        UserName = item["nn"]?.ToString() ?? "",
+                    });
+                }
             }
-            categoryResult.HasMore = page < obj["data"]["pgcnt"].ToInt32();
+            categoryResult.HasMore = page < (obj["data"]?["pgcnt"]?.ToObject<int>() ?? 0);
             return categoryResult;
         }
         public async Task<LiveRoomDetail> GetRoomDetail(object roomId)
@@ -198,18 +210,22 @@ namespace AllLive.Core
             var result = await HttpUtil.GetString($"https://www.douyu.com/japi/search/api/searchShow?kw={ Uri.EscapeDataString(keyword)}&page={ page}&pageSize=20");
             var obj = JObject.Parse(result);
 
-            foreach (var item in obj["data"]["relateShow"])
+            var relateShow = obj["data"]?["relateShow"] as JArray;
+            if (relateShow != null)
             {
-                searchResult.Rooms.Add(new LiveRoomItem()
+                foreach (var item in relateShow)
                 {
-                    Cover = item["roomSrc"].ToString(),
-                    Online = ParseHotNum(item["hot"].ToString()),
-                    RoomID = item["rid"].ToString(),
-                    Title = item["roomName"].ToString(),
-                    UserName = item["nickName"].ToString(),
-                });
+                    searchResult.Rooms.Add(new LiveRoomItem()
+                    {
+                        Cover = item["roomSrc"]?.ToString() ?? "",
+                        Online = ParseHotNum(item["hot"]?.ToString() ?? "0"),
+                        RoomID = item["rid"]?.ToString() ?? "",
+                        Title = item["roomName"]?.ToString() ?? "",
+                        UserName = item["nickName"]?.ToString() ?? "",
+                    });
+                }
+                searchResult.HasMore = relateShow.Count > 0;
             }
-            searchResult.HasMore = ((JArray)obj["data"]["relateShow"]).Count > 0;
             return searchResult;
         }
         public async Task<List<LivePlayQuality>> GetPlayQuality(LiveRoomDetail roomDetail)
@@ -220,9 +236,13 @@ namespace AllLive.Core
             var result = await HttpUtil.PostString($"https://www.douyu.com/lapi/live/getH5Play/{ roomDetail.RoomID}", data);
             var obj = JObject.Parse(result);
             var cdns = new List<string>();
-            foreach (var item in obj["data"]["cdnsWithName"])
+            var cdnsWithName = obj["data"]?["cdnsWithName"] as JArray;
+            if (cdnsWithName != null)
             {
-                cdns.Add(item["cdn"].ToString());
+                foreach (var item in cdnsWithName)
+                {
+                    cdns.Add(item["cdn"]?.ToString() ?? "");
+                }
             }
             // 如果cdn以scdn开头，将其放到最后
             for (int i = 0; i < cdns.Count; i++)
@@ -236,13 +256,17 @@ namespace AllLive.Core
             }
 
 
-            foreach (var item in obj["data"]["multirates"])
+            var multirates = obj["data"]?["multirates"] as JArray;
+            if (multirates != null)
             {
-                qualities.Add(new LivePlayQuality()
+                foreach (var item in multirates)
                 {
-                    Quality = item["name"].ToString(),
-                    Data = new KeyValuePair<int, List<string>>(item["rate"].ToInt32(), cdns),
-                });
+                    qualities.Add(new LivePlayQuality()
+                    {
+                        Quality = item["name"]?.ToString() ?? "",
+                        Data = new KeyValuePair<int, List<string>>(item["rate"]?.ToObject<int>() ?? 0, cdns),
+                    });
+                }
             }
             return qualities;
         }
@@ -269,11 +293,15 @@ namespace AllLive.Core
                 args += $"&cdn={cdn}&rate={rate}";
                 var result = await HttpUtil.PostString($"https://www.douyu.com/lapi/live/getH5Play/{rid}", args);
                 var obj = JObject.Parse(result);
-                return obj["data"]["rtmp_url"].ToString() + "/" + System.Net.WebUtility.HtmlDecode(obj["data"]["rtmp_live"].ToString());
+                var rtmpUrl = obj["data"]?["rtmp_url"]?.ToString();
+                var rtmpLive = obj["data"]?["rtmp_live"]?.ToString();
+                if (string.IsNullOrEmpty(rtmpUrl) || string.IsNullOrEmpty(rtmpLive))
+                    return "";
+                return rtmpUrl + "/" + System.Net.WebUtility.HtmlDecode(rtmpLive);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-
+                System.Diagnostics.Trace.WriteLine($"[Douyu] GetUrl failed for rid={rid}: {ex.Message}");
                 return "";
             }
 

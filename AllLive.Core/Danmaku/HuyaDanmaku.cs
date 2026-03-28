@@ -160,8 +160,9 @@ namespace AllLive.Core.Danmaku
                   
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Trace.WriteLine($"[HuyaDanmaku] Message parse error: {ex.Message}");
             }
         }
 
@@ -200,6 +201,15 @@ namespace AllLive.Core.Danmaku
         public async Task Stop()
         {
             timer?.Stop();
+            timer?.Dispose();
+            timer = null;
+            if (ws != null)
+            {
+                ws.OnOpen -= Ws_OnOpen;
+                ws.OnError -= Ws_OnError;
+                ws.OnMessage -= Ws_OnMessage;
+                ws.OnClose -= Ws_OnClose;
+            }
             await Task.Run(() =>
             {
                 ws?.Close();

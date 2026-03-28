@@ -46,12 +46,18 @@ namespace AllLive.Core.Helper
                         request.Headers.TryAddWithoutValidation(item.Key, item.Value);
                     }
                 }
-                var result = await SharedClient.SendAsync(request).ConfigureAwait(false);
-                result.EnsureSuccessStatusCode();
-                return await result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                using (var result = await SharedClient.SendAsync(request).ConfigureAwait(false))
+                {
+                    result.EnsureSuccessStatusCode();
+                    return await result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                }
             }
         }
 
+        /// <summary>
+        /// 返回原始 HttpResponseMessage，调用方负责 Dispose。
+        /// 推荐用 using 包裹返回值。
+        /// </summary>
         public static async Task<HttpResponseMessage> Get(string url, IDictionary<string, string> headers = null, IDictionary<string, string> queryParameters = null)
         {
             if (queryParameters != null)
@@ -90,9 +96,11 @@ namespace AllLive.Core.Helper
                         request.Headers.TryAddWithoutValidation(item.Key, item.Value);
                     }
                 }
-                var result = await SharedClient.SendAsync(request).ConfigureAwait(false);
-                result.EnsureSuccessStatusCode();
-                return Encoding.UTF8.GetString(await result.Content.ReadAsByteArrayAsync().ConfigureAwait(false));
+                using (var result = await SharedClient.SendAsync(request).ConfigureAwait(false))
+                {
+                    result.EnsureSuccessStatusCode();
+                    return Encoding.UTF8.GetString(await result.Content.ReadAsByteArrayAsync().ConfigureAwait(false));
+                }
             }
         }
 
@@ -110,15 +118,15 @@ namespace AllLive.Core.Helper
                 List<KeyValuePair<string, string>> body = new List<KeyValuePair<string, string>>();
                 foreach (var item in data.Split('&'))
                 {
-                    // Split on first '=' only; values may themselves contain '=' (e.g. base64).
-                    // A key with no '=' gets an empty string value rather than IndexOutOfRangeException.
                     var splits = item.Split(new char[] { '=' }, 2);
                     body.Add(new KeyValuePair<string, string>(splits[0], splits.Length > 1 ? splits[1] : ""));
                 }
                 request.Content = new FormUrlEncodedContent(body);
-                var result = await SharedClient.SendAsync(request).ConfigureAwait(false);
-                result.EnsureSuccessStatusCode();
-                return await result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                using (var result = await SharedClient.SendAsync(request).ConfigureAwait(false))
+                {
+                    result.EnsureSuccessStatusCode();
+                    return await result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                }
             }
         }
 
@@ -134,26 +142,31 @@ namespace AllLive.Core.Helper
                     }
                 }
                 request.Content = new StringContent(data, Encoding.UTF8, "application/json");
-                var result = await SharedClient.SendAsync(request).ConfigureAwait(false);
-                result.EnsureSuccessStatusCode();
-                return await result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                using (var result = await SharedClient.SendAsync(request).ConfigureAwait(false))
+                {
+                    result.EnsureSuccessStatusCode();
+                    return await result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                }
             }
         }
 
+        /// <summary>
+        /// 返回原始 HttpResponseMessage，调用方负责 Dispose。
+        /// </summary>
         public static async Task<HttpResponseMessage> Head(string url, IDictionary<string, string> headers = null)
         {
-            var request = new HttpRequestMessage(HttpMethod.Head, url);
-            if (headers != null)
+            using (var request = new HttpRequestMessage(HttpMethod.Head, url))
             {
-                foreach (var item in headers)
+                if (headers != null)
                 {
-                    request.Headers.TryAddWithoutValidation(item.Key, item.Value);
+                    foreach (var item in headers)
+                    {
+                        request.Headers.TryAddWithoutValidation(item.Key, item.Value);
+                    }
                 }
+                var response = await SharedClient.SendAsync(request).ConfigureAwait(false);
+                return response;
             }
-            // 注意：不使用 using 包裹 request，因为返回的 response 需要在调用方使用
-            // 调用方负责处理 response 的生命周期
-            var response = await SharedClient.SendAsync(request).ConfigureAwait(false);
-            return response;
         }
     }
 }

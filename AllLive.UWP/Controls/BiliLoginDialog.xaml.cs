@@ -115,54 +115,56 @@ namespace AllLive.UWP.Controls
             try
             {
 
-                var response = await HttpUtil.Get($"https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key={qrcodeKey}");
-
-                var respContent = await response.Content.ReadAsStringAsync();
-
-                var json = JObject.Parse(respContent);
-                if (json["code"].ToString() != "0")
+                using (var response = await HttpUtil.Get($"https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key={qrcodeKey}"))
                 {
-                    return;
-                }
 
-                var data = json["data"];
-                var code = data["code"].ToInt32();
-                if (code == 0)
-                {
-                    var cookies = new List<string>();
-                    long userId = 0;
-                    foreach (var item in response.Headers.GetValues("Set-Cookie"))
+                    var respContent = await response.Content.ReadAsStringAsync();
+
+                    var json = JObject.Parse(respContent);
+                    if (json["code"].ToString() != "0")
                     {
-                        var cookie = item.Split(';')[0];
-                        if (cookie.Contains("DedeUserID"))
+                        return;
+                    }
+
+                    var data = json["data"];
+                    var code = data["code"].ToInt32();
+                    if (code == 0)
+                    {
+                        var cookies = new List<string>();
+                        long userId = 0;
+                        foreach (var item in response.Headers.GetValues("Set-Cookie"))
                         {
-                            long.TryParse(cookie.Split('=')[1], out userId);
+                            var cookie = item.Split(';')[0];
+                            if (cookie.Contains("DedeUserID"))
+                            {
+                                long.TryParse(cookie.Split('=')[1], out userId);
+                            }
+                            cookies.Add(cookie);
                         }
-                        cookies.Add(cookie);
+
+
+                        if (cookies.Count > 0)
+                        {
+                            var cookieStr = cookies.Aggregate((x, y) => x + ";" + y);
+                            SettingHelper.SetValue(SettingHelper.BILI_COOKIE, cookieStr);
+                            SettingHelper.SetValue(SettingHelper.BILI_USER_ID, userId);
+                            await BiliAccount.Instance.LoadUserInfo();
+
+                            this.Hide();
+                        }
                     }
-
-
-                    if (cookies.Count > 0)
+                    else if (code == 86038)
                     {
-                        var cookieStr = cookies.Aggregate((x, y) => x + ";" + y);
-                        SettingHelper.SetValue(SettingHelper.BILI_COOKIE, cookieStr);
-                        SettingHelper.SetValue(SettingHelper.BILI_USER_ID, userId);
-                        await BiliAccount.Instance.LoadUserInfo();
-
-                        this.Hide();
+                        txtStatus.Text = "二维码已过期";
+                        qrcodeKey = "";
+                        timer?.Close();
+                        timer?.Dispose();
+                        timer = null;
                     }
-                }
-                else if (code == 86038)
-                {
-                    txtStatus.Text = "二维码已过期";
-                    qrcodeKey = "";
-                    timer?.Close();
-                    timer?.Dispose();
-                    timer = null;
-                }
-                else if (code == 86090)
-                {
-                    txtStatus.Text = "已扫描，请确认登录";
+                    else if (code == 86090)
+                    {
+                        txtStatus.Text = "已扫描，请确认登录";
+                    }
                 }
             }
             catch (Exception ex)

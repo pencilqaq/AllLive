@@ -68,15 +68,19 @@ namespace AllLive.Core
             List<LiveSubCategory> subs = new List<LiveSubCategory>();
             var result = await HttpUtil.GetString($"https://live.cdn.huya.com/liveconfig/game/bussLive?bussType={id}");
             var obj = JObject.Parse(result);
-            foreach (var item in obj["data"])
+            var subData = obj["data"] as JArray;
+            if (subData != null)
             {
-                subs.Add(new LiveSubCategory()
+                foreach (var item in subData)
                 {
-                    Pic = $"https://huyaimg.msstatic.com/cdnimage/game/{item["gid"].ToString()}-MS.jpg",
-                    ID = item["gid"].ToString(),
-                    ParentID = id,
-                    Name = item["gameFullName"].ToString(),
-                });
+                    subs.Add(new LiveSubCategory()
+                    {
+                        Pic = $"https://huyaimg.msstatic.com/cdnimage/game/{item["gid"]?.ToString() ?? "0"}-MS.jpg",
+                        ID = item["gid"]?.ToString() ?? "",
+                        ParentID = id,
+                        Name = item["gameFullName"]?.ToString() ?? "",
+                    });
+                }
             }
             return subs;
         }
@@ -86,22 +90,26 @@ namespace AllLive.Core
             LiveCategoryResult categoryResult = new LiveCategoryResult() { Rooms = new List<LiveRoomItem>() };
             var result = await HttpUtil.GetString($"https://www.huya.com/cache.php?m=LiveList&do=getLiveListByPage&tagAll=0&gameId={category.ID}&page={page}");
             var obj = JObject.Parse(result);
-            foreach (var item in obj["data"]["datas"])
+            var datas = obj["data"]?["datas"] as JArray;
+            if (datas != null)
             {
-                var cover = item["screenshot"].ToString();
-                if (!cover.Contains("?")) cover += "?x-oss-process=style/w338_h190&";
-                var title = item["introduction"]?.ToString();
-                if (string.IsNullOrEmpty(title)) title = item["roomName"]?.ToString() ?? "";
-                categoryResult.Rooms.Add(new LiveRoomItem()
+                foreach (var item in datas)
                 {
-                    Cover = cover,
-                    Online = item["totalCount"].ToInt32(),
-                    RoomID = item["profileRoom"].ToString(),
-                    Title = title,
-                    UserName = item["nick"].ToString(),
-                });
+                    var cover = item["screenshot"]?.ToString() ?? "";
+                    if (!cover.Contains("?")) cover += "?x-oss-process=style/w338_h190&";
+                    var title = item["introduction"]?.ToString();
+                    if (string.IsNullOrEmpty(title)) title = item["roomName"]?.ToString() ?? "";
+                    categoryResult.Rooms.Add(new LiveRoomItem()
+                    {
+                        Cover = cover,
+                        Online = item["totalCount"]?.ToObject<int>() ?? 0,
+                        RoomID = item["profileRoom"]?.ToString() ?? "",
+                        Title = title,
+                        UserName = item["nick"]?.ToString() ?? "",
+                    });
+                }
             }
-            categoryResult.HasMore = obj["data"]["page"].ToInt32() < obj["data"]["totalPage"].ToInt32();
+            categoryResult.HasMore = (obj["data"]?["page"]?.ToObject<int>() ?? 0) < (obj["data"]?["totalPage"]?.ToObject<int>() ?? 0);
             return categoryResult;
         }
 
@@ -110,22 +118,26 @@ namespace AllLive.Core
             LiveCategoryResult categoryResult = new LiveCategoryResult() { Rooms = new List<LiveRoomItem>() };
             var result = await HttpUtil.GetString($"https://www.huya.com/cache.php?m=LiveList&do=getLiveListByPage&tagAll=0&page={page}");
             var obj = JObject.Parse(result);
-            foreach (var item in obj["data"]["datas"])
+            var recDatas = obj["data"]?["datas"] as JArray;
+            if (recDatas != null)
             {
-                var cover = item["screenshot"].ToString();
-                if (!cover.Contains("?")) cover += "?x-oss-process=style/w338_h190&";
-                var title = item["introduction"]?.ToString();
-                if (string.IsNullOrEmpty(title)) title = item["roomName"]?.ToString() ?? "";
-                categoryResult.Rooms.Add(new LiveRoomItem()
+                foreach (var item in recDatas)
                 {
-                    Cover = cover,
-                    Online = item["totalCount"].ToInt32(),
-                    RoomID = item["profileRoom"].ToString(),
-                    Title = title,
-                    UserName = item["nick"].ToString(),
-                });
+                    var cover = item["screenshot"]?.ToString() ?? "";
+                    if (!cover.Contains("?")) cover += "?x-oss-process=style/w338_h190&";
+                    var title = item["introduction"]?.ToString();
+                    if (string.IsNullOrEmpty(title)) title = item["roomName"]?.ToString() ?? "";
+                    categoryResult.Rooms.Add(new LiveRoomItem()
+                    {
+                        Cover = cover,
+                        Online = item["totalCount"]?.ToObject<int>() ?? 0,
+                        RoomID = item["profileRoom"]?.ToString() ?? "",
+                        Title = title,
+                        UserName = item["nick"]?.ToString() ?? "",
+                    });
+                }
             }
-            categoryResult.HasMore = obj["data"]["page"].ToInt32() < obj["data"]["totalPage"].ToInt32();
+            categoryResult.HasMore = (obj["data"]?["page"]?.ToObject<int>() ?? 0) < (obj["data"]?["totalPage"]?.ToObject<int>() ?? 0);
             return categoryResult;
         }
 
@@ -252,20 +264,24 @@ namespace AllLive.Core
             };
             var result = await HttpUtil.GetUtf8String($"https://search.cdn.huya.com/?m=Search&do=getSearchContent&q={Uri.EscapeDataString(keyword)}&uid=0&v=4&typ=-5&livestate=0&rows=20&start={(page - 1) * 20}", headers);
             var obj = JObject.Parse(result);
-            foreach (var item in obj["response"]["3"]["docs"])
+            var searchDocs = obj["response"]?["3"]?["docs"] as JArray;
+            if (searchDocs != null)
             {
-                var cover = item["game_screenshot"].ToString();
-                if (!cover.Contains("?")) cover += "?x-oss-process=style/w338_h190&";
-                searchResult.Rooms.Add(new LiveRoomItem()
+                foreach (var item in searchDocs)
                 {
-                    Cover = cover,
-                    Online = item["game_total_count"].ToInt32(),
-                    RoomID = item["room_id"].ToString(),
-                    Title = item["game_roomName"].ToString(),
-                    UserName = item["game_nick"].ToString(),
-                });
+                    var cover = item["game_screenshot"]?.ToString() ?? "";
+                    if (!cover.Contains("?")) cover += "?x-oss-process=style/w338_h190&";
+                    searchResult.Rooms.Add(new LiveRoomItem()
+                    {
+                        Cover = cover,
+                        Online = item["game_total_count"]?.ToObject<int>() ?? 0,
+                        RoomID = item["room_id"]?.ToString() ?? "",
+                        Title = item["game_roomName"]?.ToString() ?? "",
+                        UserName = item["game_nick"]?.ToString() ?? "",
+                    });
+                }
             }
-            searchResult.HasMore = obj["response"]["3"]["numFound"].ToInt32() > (page * 20);
+            searchResult.HasMore = (obj["response"]?["3"]?["numFound"]?.ToObject<int>() ?? 0) > (page * 20);
             return searchResult;
         }
 

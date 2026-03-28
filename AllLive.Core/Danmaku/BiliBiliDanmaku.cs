@@ -78,8 +78,9 @@ namespace AllLive.Core.Danmaku
             {
                 ParseData(e.RawData);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Trace.WriteLine($"[BiliBiliDanmaku] Message parse error: {ex.Message}");
             }
         }
 
@@ -120,6 +121,13 @@ namespace AllLive.Core.Danmaku
                 return;
             }
             danmuInfo = info;
+            if (ws != null)
+            {
+                ws.OnOpen -= Ws_OnOpen;
+                ws.OnError -= Ws_OnError;
+                ws.OnMessage -= Ws_OnMessage;
+                ws.OnClose -= Ws_OnClose;
+            }
             var host = info.host_list.Last();
             ws = new WebSocket($"wss://{host.host}/sub");
 
@@ -159,6 +167,15 @@ namespace AllLive.Core.Danmaku
         public async Task Stop()
         {
             timer?.Stop();
+            timer?.Dispose();
+            timer = null;
+            if (ws != null)
+            {
+                ws.OnOpen -= Ws_OnOpen;
+                ws.OnError -= Ws_OnError;
+                ws.OnMessage -= Ws_OnMessage;
+                ws.OnClose -= Ws_OnClose;
+            }
             await Task.Run(() =>
             {
                 ws?.Close();

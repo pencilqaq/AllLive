@@ -71,25 +71,31 @@ namespace AllLive.Core
             List<LiveCategory> categories = new List<LiveCategory>();
             var result = await HttpUtil.GetString("https://api.live.bilibili.com/room/v1/Area/getList?need_entrance=1&parent_id=0", headers: await GetRequestHeader());
             var obj = JObject.Parse(result);
-            foreach (var item in obj["data"])
+            var dataArray = obj["data"] as JArray;
+            if (dataArray == null) return categories;
+            foreach (var item in dataArray)
             {
                 List<LiveSubCategory> subs = new List<LiveSubCategory>();
-                foreach (var subItem in item["list"])
+                var itemList = item["list"] as JArray;
+                if (itemList != null)
                 {
-                    subs.Add(new LiveSubCategory()
+                    foreach (var subItem in itemList)
                     {
-                        Pic = subItem["pic"].ToString() + "@100w.png",
-                        ID = subItem["id"].ToString(),
-                        ParentID = subItem["parent_id"].ToString(),
-                        Name = subItem["name"].ToString(),
-                    });
+                        subs.Add(new LiveSubCategory()
+                        {
+                            Pic = (subItem["pic"]?.ToString() ?? "") + "@100w.png",
+                            ID = subItem["id"]?.ToString() ?? "",
+                            ParentID = subItem["parent_id"]?.ToString() ?? "",
+                            Name = subItem["name"]?.ToString() ?? "",
+                        });
+                    }
                 }
 
                 categories.Add(new LiveCategory()
                 {
                     Children = subs,
-                    ID = item["id"].ToString(),
-                    Name = item["name"].ToString(),
+                    ID = item["id"]?.ToString() ?? "",
+                    Name = item["name"]?.ToString() ?? "",
                 });
             }
             return categories;
@@ -108,17 +114,21 @@ namespace AllLive.Core
             var result = await HttpUtil.GetString($"{url}?{query}", headers: await GetRequestHeader());
 
             var obj = JObject.Parse(result);
-            categoryResult.HasMore = obj["data"]["has_more"].ToInt32() == 1;
-            foreach (var item in obj["data"]["list"])
+            categoryResult.HasMore = (obj["data"]?["has_more"]?.ToObject<int>() ?? 0) == 1;
+            var catList = obj["data"]?["list"] as JArray;
+            if (catList != null)
             {
-                categoryResult.Rooms.Add(new LiveRoomItem()
+                foreach (var item in catList)
                 {
-                    Cover = item["cover"].ToString() + "@300w.jpg",
-                    Online = item["online"].ToInt32(),
-                    RoomID = item["roomid"].ToString(),
-                    Title = item["title"].ToString(),
-                    UserName = item["uname"].ToString(),
-                });
+                    categoryResult.Rooms.Add(new LiveRoomItem()
+                    {
+                        Cover = (item["cover"]?.ToString() ?? "") + "@300w.jpg",
+                        Online = item["online"]?.ToObject<int>() ?? 0,
+                        RoomID = item["roomid"]?.ToString() ?? "",
+                        Title = item["title"]?.ToString() ?? "",
+                        UserName = item["uname"]?.ToString() ?? "",
+                    });
+                }
             }
             return categoryResult;
         }
@@ -134,17 +144,21 @@ namespace AllLive.Core
             query = await GetWbiSign(query);
             var result = await HttpUtil.GetString($"{url}?{query}", headers: await GetRequestHeader());
             var obj = JObject.Parse(result);
-            categoryResult.HasMore = ((JArray)obj["data"]["list"]).Count > 0;
-            foreach (var item in obj["data"]["list"])
+            var recList = obj["data"]?["list"] as JArray;
+            categoryResult.HasMore = (recList?.Count ?? 0) > 0;
+            if (recList != null)
             {
-                categoryResult.Rooms.Add(new LiveRoomItem()
+                foreach (var item in recList)
                 {
-                    Cover = item["cover"].ToString() + "@300w.jpg",
-                    Online = item["online"].ToInt32(),
-                    RoomID = item["roomid"].ToString(),
-                    Title = item["title"].ToString(),
-                    UserName = item["uname"].ToString(),
-                });
+                    categoryResult.Rooms.Add(new LiveRoomItem()
+                    {
+                        Cover = (item["cover"]?.ToString() ?? "") + "@300w.jpg",
+                        Online = item["online"]?.ToObject<int>() ?? 0,
+                        RoomID = item["roomid"]?.ToString() ?? "",
+                        Title = item["title"]?.ToString() ?? "",
+                        UserName = item["uname"]?.ToString() ?? "",
+                    });
+                }
             }
             return categoryResult;
         }
@@ -158,18 +172,18 @@ namespace AllLive.Core
 
             return new LiveRoomDetail()
             {
-                Cover = obj["data"]["room_info"]["cover"].ToString(),
-                Online = obj["data"]["room_info"]["online"].ToInt32(),
-                RoomID = obj["data"]["room_info"]["room_id"].ToString(),
-                Title = obj["data"]["room_info"]["title"].ToString(),
-                UserName = obj["data"]["anchor_info"]["base_info"]["uname"].ToString(),
-                Introduction = obj["data"]["room_info"]["description"].ToString(),
-                UserAvatar = obj["data"]["anchor_info"]["base_info"]["face"].ToString() + "@100w.jpg",
+                Cover = obj["data"]?["room_info"]?["cover"]?.ToString() ?? "",
+                Online = obj["data"]?["room_info"]?["online"]?.ToObject<int>() ?? 0,
+                RoomID = obj["data"]?["room_info"]?["room_id"]?.ToString() ?? "",
+                Title = obj["data"]?["room_info"]?["title"]?.ToString() ?? "",
+                UserName = obj["data"]?["anchor_info"]?["base_info"]?["uname"]?.ToString() ?? "Unknown",
+                Introduction = obj["data"]?["room_info"]?["description"]?.ToString() ?? "",
+                UserAvatar = (obj["data"]?["anchor_info"]?["base_info"]?["face"]?.ToString() ?? "") + "@100w.jpg",
                 Notice = "",
-                Status = obj["data"]["room_info"]["live_status"].ToInt32() == 1,
+                Status = (obj["data"]?["room_info"]?["live_status"]?.ToObject<int>() ?? 0) == 1,
                 DanmakuData = new BiliDanmakuArgs()
                 {
-                    RoomId = obj["data"]["room_info"]["room_id"].ToInt32(),
+                    RoomId = obj["data"]?["room_info"]?["room_id"]?.ToObject<int>() ?? 0,
                     UserId = UserId,
                     Cookie = GetCookie(),
                 },
@@ -186,16 +200,20 @@ namespace AllLive.Core
             var result = await HttpUtil.GetString($"https://api.bilibili.com/x/web-interface/search/type?context=&search_type=live&cover_type=user_cover&page={page}&order=&keyword={Uri.EscapeDataString(keyword)}&category_id=&__refresh__=true&_extra=&highlight=0&single_column=0", headers: await GetRequestHeader());
             var obj = JObject.Parse(result);
 
-            foreach (var item in obj["data"]["result"]["live_room"])
+            var searchLiveRoom = obj["data"]?["result"]?["live_room"] as JArray;
+            if (searchLiveRoom != null)
             {
-                searchResult.Rooms.Add(new LiveRoomItem()
+                foreach (var item in searchLiveRoom)
                 {
-                    Cover = "https:" + item["cover"].ToString() + "@300w.jpg",
-                    Online = item["online"].ToInt32(),
-                    RoomID = item["roomid"].ToString(),
-                    Title = Regex.Replace(item["title"].ToString(), @"<em.*?/em>", ""),
-                    UserName = item["uname"].ToString(),
-                });
+                    searchResult.Rooms.Add(new LiveRoomItem()
+                    {
+                        Cover = "https:" + (item["cover"]?.ToString() ?? "") + "@300w.jpg",
+                        Online = item["online"]?.ToObject<int>() ?? 0,
+                        RoomID = item["roomid"]?.ToString() ?? "",
+                        Title = Regex.Replace(item["title"]?.ToString() ?? "", @"<em.*?/em>", ""),
+                        UserName = item["uname"]?.ToString() ?? "",
+                    });
+                }
             }
             searchResult.HasMore = searchResult.Rooms.Count > 0;
             return searchResult;
@@ -232,19 +250,28 @@ namespace AllLive.Core
             );
             var obj = JObject.Parse(result);
             var qualitiesMap = new Dictionary<int, string>();
-            foreach (var item in obj["data"]["playurl_info"]["playurl"]["g_qn_desc"])
+            var gQnDesc = obj["data"]?["playurl_info"]?["playurl"]?["g_qn_desc"] as JArray;
+            if (gQnDesc != null)
             {
-                qualitiesMap[item["qn"].ToObject<int>()] =
-                    item["desc"].ToString();
-            }
-            foreach (var item in obj["data"]["playurl_info"]["playurl"]["stream"][0]["format"][0]["codec"][0]["accept_qn"])
-            {
-                var qualityItem = new LivePlayQuality()
+                foreach (var item in gQnDesc)
                 {
-                    Quality = qualitiesMap[item.ToObject<int>()] ?? "未知清晰度",
-                    Data = item,
-                };
-                qualities.Add(qualityItem);
+                    qualitiesMap[item["qn"]?.ToObject<int>() ?? 0] =
+                        item["desc"]?.ToString() ?? "未知清晰度";
+                }
+            }
+            var acceptQn = obj["data"]?["playurl_info"]?["playurl"]?["stream"]?[0]?["format"]?[0]?["codec"]?[0]?["accept_qn"] as JArray;
+            if (acceptQn != null)
+            {
+                foreach (var item in acceptQn)
+                {
+                    var qnVal = item.ToObject<int>();
+                    var qualityItem = new LivePlayQuality()
+                    {
+                        Quality = qualitiesMap.ContainsKey(qnVal) ? qualitiesMap[qnVal] : "未知清晰度",
+                        Data = item,
+                    };
+                    qualities.Add(qualityItem);
+                }
             }
             return qualities;
         }
@@ -260,13 +287,17 @@ namespace AllLive.Core
             List<LivePlayQuality> qualities = new List<LivePlayQuality>();
             var result = await HttpUtil.GetString($"https://api.live.bilibili.com/room/v1/Room/playUrl?cid={roomID}&qn=&platform=web", headers: await GetRequestHeader());
             var obj = JObject.Parse(result);
-            foreach (var item in obj["data"]["quality_description"])
+            var qualityDesc = obj["data"]?["quality_description"] as JArray;
+            if (qualityDesc != null)
             {
-                qualities.Add(new LivePlayQuality()
+                foreach (var item in qualityDesc)
                 {
-                    Quality = item["desc"].ToString(),
-                    Data = item["qn"].ToInt32(),
-                });
+                    qualities.Add(new LivePlayQuality()
+                    {
+                        Quality = item["desc"]?.ToString() ?? "",
+                        Data = item["qn"]?.ToObject<int>() ?? 0,
+                    });
+                }
             }
             return qualities;
         }
@@ -298,22 +329,28 @@ namespace AllLive.Core
                 }
             );
             var obj = JObject.Parse(result);
-            var streamList = obj["data"]["playurl_info"]["playurl"]["stream"];
-            foreach (var streamItem in streamList)
+            var streamList = obj["data"]?["playurl_info"]?["playurl"]?["stream"] as JArray;
+            if (streamList != null)
             {
-                var formatList = streamItem["format"];
-                foreach (var formatItem in formatList)
+                foreach (var streamItem in streamList)
                 {
-                    var codecList = formatItem["codec"];
-                    foreach (var codecItem in codecList)
+                    var formatList = streamItem["format"] as JArray;
+                    if (formatList == null) continue;
+                    foreach (var formatItem in formatList)
                     {
-                        var urlList = codecItem["url_info"];
-                        var baseUrl = codecItem["base_url"].ToString();
-                        foreach (var urlItem in urlList)
+                        var codecList = formatItem["codec"] as JArray;
+                        if (codecList == null) continue;
+                        foreach (var codecItem in codecList)
                         {
-                            urls.Add(
-                              $"{urlItem["host"].ToString()}{baseUrl.ToString()}{urlItem["extra"].ToString()}"
-                            );
+                            var urlList = codecItem["url_info"] as JArray;
+                            if (urlList == null) continue;
+                            var baseUrl = codecItem["base_url"]?.ToString() ?? "";
+                            foreach (var urlItem in urlList)
+                            {
+                                urls.Add(
+                                  $"{urlItem["host"]?.ToString() ?? ""}{baseUrl}{urlItem["extra"]?.ToString() ?? ""}"
+                                );
+                            }
                         }
                     }
                 }
@@ -335,9 +372,13 @@ namespace AllLive.Core
             List<string> urls = new List<string>();
             var result = await HttpUtil.GetString($"https://api.live.bilibili.com/room/v1/Room/playUrl?cid={roomID}&qn={qn}&platform=web", headers: await GetRequestHeader());
             var obj = JObject.Parse(result);
-            foreach (var item in obj["data"]["durl"])
+            var durlList = obj["data"]?["durl"] as JArray;
+            if (durlList != null)
             {
-                urls.Add(item["url"].ToString());
+                foreach (var item in durlList)
+                {
+                    urls.Add(item["url"]?.ToString() ?? "");
+                }
             }
             return urls;
         }
