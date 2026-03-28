@@ -64,6 +64,8 @@ namespace AllLive.UWP.ViewModels
         }
 
         HubConnection connection;
+        private readonly List<IDisposable> _signalRSubscriptions = new List<IDisposable>();
+
         public async void ConnectSignalR(string roomId)
         {
             try
@@ -74,6 +76,7 @@ namespace AllLive.UWP.ViewModels
                     return;
                 }
                 SignalRConnecting = true;
+                LogHelper.Log("[SyncVM.ConnectSignalR] 开始连接SignalR", LogType.DEBUG);
                 connection = new HubConnectionBuilder()
                    .WithUrl(URL)
                    .Build();
@@ -81,7 +84,7 @@ namespace AllLive.UWP.ViewModels
                 {
                     RoomConnected = false;
                     Utils.ShowMessageToast("连接已断开");
-                    LogHelper.Log("连接已断开", LogType.ERROR, error);
+                    LogHelper.Log("[SyncVM] 连接已断开", LogType.ERROR, error);
                     await Task.CompletedTask;
                 };
                 await connection.StartAsync();
@@ -96,10 +99,11 @@ namespace AllLive.UWP.ViewModels
                     IsCreator = false;
                     await JoinRoom(roomId);
                 }
+                LogHelper.Log("[SyncVM.ConnectSignalR] SignalR连接成功", LogType.DEBUG);
             }
             catch (Exception ex)
             {
-                LogHelper.Log("连接失败", LogType.ERROR, ex);
+                LogHelper.Log("[SyncVM.ConnectSignalR] 连接失败", LogType.ERROR, ex);
                 Utils.ShowMessageToast($"连接失败：{ex.Message}");
             }
             finally
@@ -110,29 +114,32 @@ namespace AllLive.UWP.ViewModels
 
         public void ListenSignalR()
         {
-            connection.On<bool, string>("onFavoriteReceived", (overlay, content) =>
+            // 清理旧的订阅
+            DisposeSubscriptions();
+
+            _signalRSubscriptions.Add(connection.On<bool, string>("onFavoriteReceived", (overlay, content) =>
             {
                 ReceiveFavorite(overlay, content);
-            });
-            connection.On<bool, string>("onHistoryReceived", (overlay, content) =>
+            }));
+            _signalRSubscriptions.Add(connection.On<bool, string>("onHistoryReceived", (overlay, content) =>
             {
                 ReceiveHistory(overlay, content);
-            });
-            connection.On<bool, string>("onShieldWordReceived", (overlay, content) =>
+            }));
+            _signalRSubscriptions.Add(connection.On<bool, string>("onShieldWordReceived", (overlay, content) =>
             {
                 ReceiveShieldWord(overlay, content);
-            });
-            connection.On<bool, string>("onBiliAccountReceived", (overlay, content) =>
+            }));
+            _signalRSubscriptions.Add(connection.On<bool, string>("onBiliAccountReceived", (overlay, content) =>
             {
                 ReceiveBiliBili(overlay, content);
-            });
-            connection.On<string>("onRoomDestroyed", (roomName) =>
+            }));
+            _signalRSubscriptions.Add(connection.On<string>("onRoomDestroyed", (roomName) =>
             {
                 ShowMessage("房间已销毁");
                 DisconnectSignalR();
-            });
+            }));
 
-            connection.On<List<RoomUser>>("onUserUpdated", (user) =>
+            _signalRSubscriptions.Add(connection.On<List<RoomUser>>("onUserUpdated", (user) =>
             {
                 _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
                 {
@@ -146,8 +153,23 @@ namespace AllLive.UWP.ViewModels
                         RoomUsers.Add(u);
                     }
                 });
-            });
+            }));
+        }
 
+        private void DisposeSubscriptions()
+        {
+            foreach (var sub in _signalRSubscriptions)
+            {
+                try
+                {
+                    sub.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    LogHelper.Log("[SyncVM.DisposeSubscriptions] 清理订阅失败", LogType.ERROR, ex);
+                }
+            }
+            _signalRSubscriptions.Clear();
         }
 
         private void ReceiveFavorite(bool overlay, string content)
@@ -240,12 +262,26 @@ namespace AllLive.UWP.ViewModels
             });
         }
 
-        public void DisconnectSignalR()
+        public async void DisconnectSignalR()
         {
-            timer?.Stop();
-            timer?.Dispose();
-            timer = null;
-            connection?.DisposeAsync();
+            try
+            {
+                LogHelper.Log("[SyncVM.DisconnectSignalR] 开始断开连接", LogType.DEBUG);
+                timer?.Stop();
+                timer?.Dispose();
+                timer = null;
+                DisposeSubscriptions();
+                if (connection != null)
+                {
+                    await connection.DisposeAsync();
+                    connection = null;
+                }
+                LogHelper.Log("[SyncVM.DisconnectSignalR] 连接已断开", LogType.DEBUG);
+            }
+            catch (Exception ex)
+            {
+                LogHelper.Log("[SyncVM.DisconnectSignalR] 断开连接失败", LogType.ERROR, ex);
+            }
             _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
                 SignalRConnecting = false;

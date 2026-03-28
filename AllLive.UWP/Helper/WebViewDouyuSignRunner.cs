@@ -52,8 +52,8 @@ namespace AllLive.UWP.Helper
                 return await RunOnUiThreadAsync(async () =>
                 {
                     LogHelper.Log("WebViewDouyuSignRunner eval html", LogType.DEBUG);
-                    await _webView.InvokeScriptAsync("eval", new[] { html });
-                    var jsCode = await _webView.InvokeScriptAsync("eval", new[] { "ub98484234()" });
+                    await InvokeScriptWithTimeoutAsync("eval", new[] { html }, 10);
+                    var jsCode = await InvokeScriptWithTimeoutAsync("eval", new[] { "ub98484234()" }, 10);
                     if (string.IsNullOrEmpty(jsCode))
                     {
                         return string.Empty;
@@ -65,11 +65,11 @@ namespace AllLive.UWP.Helper
                     var jsCode2 = Regex.Replace(jsCode, @"return rt;}\);?", "return rt;}");
                     jsCode2 = Regex.Replace(jsCode2, @"\(function \(", "function sign(");
                     jsCode2 = Regex.Replace(jsCode2, @"CryptoJS\.MD5\(cb\)\.toString\(\)", $@"""{rb}""");
-                    await _webView.InvokeScriptAsync("eval", new[] { jsCode2 });
+                    await InvokeScriptWithTimeoutAsync("eval", new[] { jsCode2 }, 10);
 
                     var escapedRid = EscapeJsString(rid);
                     var script = $"(function(){{ try {{ return sign('{escapedRid}','{did}','{time}'); }} catch(e) {{ return \"ERROR:\" + e.message; }} }})()";
-                    var result = await _webView.InvokeScriptAsync("eval", new[] { script });
+                    var result = await InvokeScriptWithTimeoutAsync("eval", new[] { script }, 10);
                     LogHelper.Log("WebViewDouyuSignRunner result: " + (result ?? string.Empty), LogType.DEBUG);
                     return result ?? string.Empty;
                 }).ConfigureAwait(false);
@@ -141,6 +141,11 @@ namespace AllLive.UWP.Helper
                     _hostContainer.Children.Remove(_webView);
                     _webView = null;
                 }
+                if (_hostPopup != null)
+                {
+                    _hostPopup.IsOpen = false;
+                }
+                System.Diagnostics.Trace.WriteLine("[WebViewDouyuSignRunner.ResetWebViewAsync] WebView 和 Popup 已清理");
 
                 _initialized = false;
                 _initializationTask = null;
@@ -186,6 +191,19 @@ namespace AllLive.UWP.Helper
                 IsHitTestVisible = false,
                 IsOpen = true
             };
+        }
+
+        private async Task<string> InvokeScriptWithTimeoutAsync(string function, string[] args, int timeoutSeconds)
+        {
+            var scriptTask = _webView.InvokeScriptAsync(function, args).AsTask();
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(timeoutSeconds));
+            var completedTask = await Task.WhenAny(scriptTask, timeoutTask);
+            if (completedTask == timeoutTask)
+            {
+                System.Diagnostics.Trace.WriteLine("[WebViewDouyuSignRunner] 脚本执行超时（" + timeoutSeconds + "秒）");
+                throw new TimeoutException("脚本执行超时（" + timeoutSeconds + "秒）");
+            }
+            return await scriptTask;
         }
 
         private static string EscapeJsString(string value)

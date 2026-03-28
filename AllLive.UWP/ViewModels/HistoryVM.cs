@@ -40,18 +40,16 @@ namespace AllLive.UWP.ViewModels
             set { _loadingLiveStatus = value; DoPropertyChanged("LoaddingLiveStatus"); }
         }
 
-        int loadedCount = 0;
-
         public async void LoadData()
         {
             try
             {
+                LogHelper.Log("[HistoryVM.LoadData] 开始加载历史数据", LogType.DEBUG);
                 Loading = true;
-                foreach (var item in await DatabaseHelper.GetHistory())
-                {
-                    Items.Add(item);
-                }
+                var list = await DatabaseHelper.GetHistory();
+                Items = new ObservableCollection<HistoryItem>(list);
                 IsEmpty = Items.Count == 0;
+                LogHelper.Log($"[HistoryVM.LoadData] 加载完成, 共{Items.Count}条", LogType.DEBUG);
                 if (!IsEmpty)
                 {
                     LoadLiveStatus();
@@ -59,6 +57,7 @@ namespace AllLive.UWP.ViewModels
             }
             catch (Exception ex)
             {
+                LogHelper.Log("[HistoryVM.LoadData] 加载历史数据失败", LogType.ERROR, ex);
                 HandleError(ex);
             }
             finally
@@ -74,17 +73,34 @@ namespace AllLive.UWP.ViewModels
             LoadData();
         }
 
-        public void LoadLiveStatus()
+        public async void LoadLiveStatus()
         {
-            LoaddingLiveStatus = true;
-            System.Threading.Interlocked.Exchange(ref loadedCount, 0);
-            foreach (var item in Items)
+            try
             {
-                LoadLiveStatus(item);
+                LoaddingLiveStatus = true;
+                LogHelper.Log("[HistoryVM.LoadLiveStatus] 开始批量加载直播状态", LogType.DEBUG);
+                var tasks = Items.Select(item => LoadLiveStatusAsync(item)).ToArray();
+                await Task.WhenAll(tasks);
+                LogHelper.Log("[HistoryVM.LoadLiveStatus] 批量加载直播状态完成", LogType.DEBUG);
+            }
+            catch (Exception ex)
+            {
+                LogHelper.Log("[HistoryVM.LoadLiveStatus] 批量加载直播状态失败", LogType.ERROR, ex);
+            }
+            finally
+            {
+                await Windows.ApplicationModel.Core.CoreApplication.MainView.Dispatcher.RunAsync(
+                    Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+                {
+                    Items = new ObservableCollection<HistoryItem>(
+                        Items.OrderByDescending(x => (int)x.LiveStatus)
+                             .ThenByDescending(x => x.WatchTime));
+                    LoaddingLiveStatus = false;
+                });
             }
         }
 
-        public async void LoadLiveStatus(HistoryItem item)
+        private async Task LoadLiveStatusAsync(HistoryItem item)
         {
             try
             {
@@ -97,22 +113,7 @@ namespace AllLive.UWP.ViewModels
             }
             catch (Exception ex)
             {
-                LogHelper.Log($"获取直播状态失败:{item.SiteName}-{item.RoomID}", LogType.ERROR, ex);
-            }
-            finally
-            {
-                var currentCount = System.Threading.Interlocked.Increment(ref loadedCount);
-                if (currentCount == Items.Count)
-                {
-                    await Windows.ApplicationModel.Core.CoreApplication.MainView.Dispatcher.RunAsync(
-                        Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
-                    {
-                        LoaddingLiveStatus = false;
-                        Items = new ObservableCollection<HistoryItem>(
-                            Items.OrderByDescending(x => (int)x.LiveStatus)
-                                 .ThenByDescending(x => x.WatchTime));
-                    });
-                }
+                LogHelper.Log($"[HistoryVM.LoadLiveStatusAsync] {item.SiteName}-{item.RoomID} 失败", LogType.ERROR, ex);
             }
         }
 
@@ -126,6 +127,7 @@ namespace AllLive.UWP.ViewModels
             }
             catch (Exception ex)
             {
+                LogHelper.Log("[HistoryVM.RemoveItem] 删除历史记录失败", LogType.ERROR, ex);
                 HandleError(ex);
             }
         }
@@ -146,6 +148,7 @@ namespace AllLive.UWP.ViewModels
             }
             catch (Exception ex)
             {
+                LogHelper.Log("[HistoryVM.Clean] 清空历史记录失败", LogType.ERROR, ex);
                 HandleError(ex);
             }
         }
@@ -181,6 +184,7 @@ namespace AllLive.UWP.ViewModels
                 }
                 catch (Exception ex)
                 {
+                    LogHelper.Log("[HistoryVM.Input] 导入历史记录失败", LogType.ERROR, ex);
                     HandleError(ex);
                     Utils.ShowMessageToast("导入失败");
                 }
@@ -235,6 +239,7 @@ namespace AllLive.UWP.ViewModels
                 }
                 catch (Exception ex)
                 {
+                    LogHelper.Log("[HistoryVM.Output] 导出历史记录失败", LogType.ERROR, ex);
                     HandleError(ex);
                     Utils.ShowMessageToast("导出失败");
                 }

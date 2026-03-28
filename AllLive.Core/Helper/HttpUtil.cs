@@ -27,14 +27,19 @@ namespace AllLive.Core.Helper
 
         public static async Task<string> GetString(string url, IDictionary<string, string> headers = null, IDictionary<string, string> queryParameters = null)
         {
-            if (queryParameters != null)
+            if (queryParameters != null && queryParameters.Count > 0)
             {
-                url += "?";
+                var sb = new StringBuilder(url);
+                sb.Append("?");
                 foreach (var item in queryParameters)
                 {
-                    url += $"{item.Key}={Uri.EscapeDataString(item.Value)}&";
+                    sb.Append(item.Key);
+                    sb.Append("=");
+                    sb.Append(Uri.EscapeDataString(item.Value));
+                    sb.Append("&");
                 }
-                url = url.TrimEnd('&');
+                sb.Length--; // remove trailing &
+                url = sb.ToString();
             }
 
             using (var request = new HttpRequestMessage(HttpMethod.Get, url))
@@ -60,14 +65,19 @@ namespace AllLive.Core.Helper
         /// </summary>
         public static async Task<HttpResponseMessage> Get(string url, IDictionary<string, string> headers = null, IDictionary<string, string> queryParameters = null)
         {
-            if (queryParameters != null)
+            if (queryParameters != null && queryParameters.Count > 0)
             {
-                url += "?";
+                var sb = new StringBuilder(url);
+                sb.Append("?");
                 foreach (var item in queryParameters)
                 {
-                    url += $"{item.Key}={Uri.EscapeDataString(item.Value)}&";
+                    sb.Append(item.Key);
+                    sb.Append("=");
+                    sb.Append(Uri.EscapeDataString(item.Value));
+                    sb.Append("&");
                 }
-                url = url.TrimEnd('&');
+                sb.Length--; // remove trailing &
+                url = sb.ToString();
             }
 
             using (var request = new HttpRequestMessage(HttpMethod.Get, url))

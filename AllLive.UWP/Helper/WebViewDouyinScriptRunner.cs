@@ -71,7 +71,7 @@ namespace AllLive.UWP.Helper
                         throw new InvalidOperationException("WebView is null");
                     }
                     
-                    var result = await _webView.InvokeScriptAsync("eval", new[] { script });
+                    var result = await InvokeScriptWithTimeoutAsync("eval", new[] { script }, 10);
                     LogHelper.Log($"[WebViewRunner] JS执行结果: {Truncate(result ?? "null", 100)}", LogType.DEBUG);
                     
                     if (!string.IsNullOrEmpty(result) && result.StartsWith("ERROR:"))
@@ -149,14 +149,14 @@ namespace AllLive.UWP.Helper
 
                     _scripts = scripts;
                     LogHelper.Log("[WebViewRunner] 注入脚本中...", LogType.DEBUG);
-                    var evalResult = await _webView.InvokeScriptAsync("eval", new[] { _scripts });
+                    var evalResult = await InvokeScriptWithTimeoutAsync("eval", new[] { _scripts }, 30);
                     LogHelper.Log($"[WebViewRunner] 脚本注入结果: {Truncate(evalResult ?? "null", 50)}", LogType.DEBUG);
                     
                     // 验证函数是否存在
-                    var checkABogus = await _webView.InvokeScriptAsync("eval", new[] { "typeof getABogus" });
+                    var checkABogus = await InvokeScriptWithTimeoutAsync("eval", new[] { "typeof getABogus" }, 10);
                     LogHelper.Log($"[WebViewRunner] typeof getABogus = {checkABogus}", LogType.DEBUG);
                     
-                    var checkSignature = await _webView.InvokeScriptAsync("eval", new[] { "typeof getMSSDKSignature" });
+                    var checkSignature = await InvokeScriptWithTimeoutAsync("eval", new[] { "typeof getMSSDKSignature" }, 10);
                     LogHelper.Log($"[WebViewRunner] typeof getMSSDKSignature = {checkSignature}", LogType.DEBUG);
                     
                     if (checkABogus != "function")
@@ -202,6 +202,11 @@ namespace AllLive.UWP.Helper
                     }
                     _webView = null;
                 }
+                if (_hostPopup != null)
+                {
+                    _hostPopup.IsOpen = false;
+                }
+                System.Diagnostics.Trace.WriteLine("[WebViewDouyinScriptRunner.ResetWebViewAsync] WebView 和 Popup 已清理");
             });
         }
 
@@ -271,6 +276,19 @@ if (typeof document === 'undefined') { var document = { cookie: '' }; }
                 .Replace("'", "\\'")
                 .Replace("\r", "\\r")
                 .Replace("\n", "\\n");
+        }
+
+        private async Task<string> InvokeScriptWithTimeoutAsync(string function, string[] args, int timeoutSeconds)
+        {
+            var scriptTask = _webView.InvokeScriptAsync(function, args).AsTask();
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(timeoutSeconds));
+            var completedTask = await Task.WhenAny(scriptTask, timeoutTask);
+            if (completedTask == timeoutTask)
+            {
+                System.Diagnostics.Trace.WriteLine("[WebViewDouyinScriptRunner] 脚本执行超时（" + timeoutSeconds + "秒）");
+                throw new TimeoutException("脚本执行超时（" + timeoutSeconds + "秒）");
+            }
+            return await scriptTask;
         }
 
         private async Task RunOnUiThreadAsync(Action action)

@@ -275,14 +275,10 @@ namespace AllLive.Core
             var args = roomDetail.Data.ToString();
             var data = (KeyValuePair<int, List<string>>)qn.Data;
             List<string> urls = new List<string>();
-            foreach (var item in data.Value)
-            {
-                var url = await GetUrl(roomDetail.RoomID, args, data.Key, item);
-                if (url.Length != 0)
-                {
-                    urls.Add(url);
-                }
-            }
+            var tasks = data.Value.Select(item => GetUrl(roomDetail.RoomID, args, data.Key, item)).ToArray();
+            var results = await Task.WhenAll(tasks);
+            urls.AddRange(results.Where(u => !string.IsNullOrEmpty(u)));
+            System.Diagnostics.Trace.WriteLine($"[Douyu.GetPlayUrls] fetched {urls.Count} URLs in parallel from {data.Value.Count} CDNs");
             return urls;
         }
 

@@ -21,6 +21,8 @@ namespace AllLive.Core
 {
     public class Douyin : ILiveSite
     {
+        private static readonly Random _random = new Random();
+
         public string Name => "抖音直播";
         public ILiveDanmaku GetDanmaku() => new DouyinDanmaku();
 
@@ -904,18 +906,17 @@ namespace AllLive.Core
 
         private string GenerateRandomNumber(int length)
         {
-            var random = new Random();
             var sb = new StringBuilder();
             for (int i = 0; i < length; i++)
             {
                 // First digit should not be 0
                 if (i == 0)
                 {
-                    sb.Append(random.Next(1, 9));
+                    sb.Append(_random.Next(1, 9));
                 }
                 else
                 {
-                    sb.Append(random.Next(0, 9));
+                    sb.Append(_random.Next(0, 9));
                 }
             }
             return sb.ToString();

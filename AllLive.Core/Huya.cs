@@ -18,6 +18,8 @@ namespace AllLive.Core
 {
     public class Huya : ILiveSite
     {
+        private static readonly Random _random = new Random();
+
         public string Name => "虎牙直播";
         public ILiveDanmaku GetDanmaku() => new HuyaDanmaku();
 
@@ -385,9 +387,8 @@ namespace AllLive.Core
 
             var wsSecret = Md5Hash(secretStr);
 
-            var rnd = new Random();
-            var ct = (long)((long.Parse(wsTime, System.Globalization.NumberStyles.HexNumber) + rnd.NextDouble()) * 1000);
-            var uuid = ((long)((ct % 1e10 + rnd.NextDouble()) * 1e3 % 0xffffffff)).ToString();
+            var ct = (long)((long.Parse(wsTime, System.Globalization.NumberStyles.HexNumber) + _random.NextDouble()) * 1000);
+            var uuid = ((long)((ct % 1e10 + _random.NextDouble()) * 1e3 % 0xffffffff)).ToString();
 
             var sb = new StringBuilder();
             sb.Append($"wsSecret={wsSecret}");

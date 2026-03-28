@@ -37,6 +37,8 @@ namespace AllLive.Core.Danmaku
     }
     public class BiliBiliDanmaku : ILiveDanmaku
     {
+        private static readonly Regex ControlCharRegex = new Regex(@"[\x00-\x1f]+", RegexOptions.Compiled);
+
         public event EventHandler<LiveMessage> NewMessage;
         public event EventHandler<string> OnClose;
         public int HeartbeatTime => 60 * 1000;
@@ -55,23 +57,29 @@ namespace AllLive.Core.Danmaku
         }
         private async void Ws_OnOpen(object sender, EventArgs e)
         {
-            await Task.Run(() =>
+            try
             {
-                //发送进房信息
-                ws.Send(EncodeData(JsonConvert.SerializeObject(new
+                await Task.Run(() =>
                 {
-                    roomid = roomId,
-                    uid = Args.UserId,
-                    protover = _forceLegacyProtover ? 2 : 3,
-                    key = danmuInfo.token,
-                    platform = "web",
-                    type = 2,
-                    buvid,
-                }), 7));
+                    //发送进房信息
+                    ws.Send(EncodeData(JsonConvert.SerializeObject(new
+                    {
+                        roomid = roomId,
+                        uid = Args.UserId,
+                        protover = _forceLegacyProtover ? 2 : 3,
+                        key = danmuInfo.token,
+                        platform = "web",
+                        type = 2,
+                        buvid,
+                    }), 7));
 
-            });
-            timer.Start();
-
+                });
+                timer.Start();
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[BiliBiliDanmaku.Ws_OnOpen] error: {ex.Message}");
+            }
         }
         private void Ws_OnMessage(object sender, MessageEventArgs e)
         {
@@ -87,24 +95,37 @@ namespace AllLive.Core.Danmaku
 
         private void Ws_OnClose(object sender, CloseEventArgs e)
         {
-            // https://github.com/sta/websocket-sharp/issues/219
-            var sslProtocolHack = (System.Security.Authentication.SslProtocols)(SslProtocolsHack.Tls12 | SslProtocolsHack.Tls11 | SslProtocolsHack.Tls);
-            //TlsHandshakeFailure
-            if (e.Code == 1015 && ws.SslConfiguration.EnabledSslProtocols != sslProtocolHack)
+            try
             {
-                ws.SslConfiguration.EnabledSslProtocols = sslProtocolHack;
-                ws.Connect();
+                // https://github.com/sta/websocket-sharp/issues/219
+                var sslProtocolHack = (System.Security.Authentication.SslProtocols)(SslProtocolsHack.Tls12 | SslProtocolsHack.Tls11 | SslProtocolsHack.Tls);
+                //TlsHandshakeFailure
+                if (e.Code == 1015 && ws.SslConfiguration.EnabledSslProtocols != sslProtocolHack)
+                {
+                    ws.SslConfiguration.EnabledSslProtocols = sslProtocolHack;
+                    ws.Connect();
+                }
+                else
+                {
+                    OnClose?.Invoke(this, e.Reason);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                OnClose?.Invoke(this, e.Reason);
+                Trace.WriteLine($"[BiliBiliDanmaku.Ws_OnClose] error: {ex.Message}");
             }
-
         }
 
         private void Ws_OnError(object sender, WebSocketSharp.ErrorEventArgs e)
         {
-            OnClose?.Invoke(this, e.Message);
+            try
+            {
+                OnClose?.Invoke(this, e.Message);
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[BiliBiliDanmaku.Ws_OnError] error invoking OnClose: {ex.Message}");
+            }
         }
 
         public async Task Start(object args)
@@ -155,15 +176,27 @@ namespace AllLive.Core.Danmaku
 
         private void Timer_Elapsed(object sender, ElapsedEventArgs e)
         {
-            Heartbeat();
+            _ = HeartbeatAsync();
         }
 
-        public async void Heartbeat()
+        public void Heartbeat()
         {
-            await Task.Run(() =>
+            _ = HeartbeatAsync();
+        }
+
+        public async Task HeartbeatAsync()
+        {
+            try
             {
-                ws.Send(EncodeData("", 2));
-            });
+                await Task.Run(() =>
+                {
+                    ws.Send(EncodeData("", 2));
+                });
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[BiliBiliDanmaku.HeartbeatAsync] error: {ex.Message}");
+            }
         }
         public async Task Stop()
         {
@@ -217,7 +250,7 @@ namespace AllLive.Core.Danmaku
                 }
                 var text = Encoding.UTF8.GetString(body);
                 //可能有多条数据，做个分割
-                var textLines = Regex.Split(text, "[\x00-\x1f]+").Where(x => x.Length > 2 && x[0] == '{').ToArray();
+                var textLines = ControlCharRegex.Split(text).Where(x => x.Length > 2 && x[0] == '{').ToArray();
                 foreach (var item in textLines)
                 {
                     ParseMessage(item);
@@ -339,7 +372,7 @@ namespace AllLive.Core.Danmaku
             using (MemoryStream outBuffer = new MemoryStream())
             using (System.IO.Compression.DeflateStream compressedzipStream = new System.IO.Compression.DeflateStream(new MemoryStream(data, 2, data.Length - 2), System.IO.Compression.CompressionMode.Decompress))
             {
-                byte[] block = new byte[1024];
+                byte[] block = new byte[4096];
                 while (true)
                 {
                     int bytesRead = compressedzipStream.Read(block, 0, block.Length);

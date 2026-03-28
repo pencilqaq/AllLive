@@ -78,6 +78,7 @@ namespace AllLive.Core.Danmaku
             }
             catch (Exception ex)
             {
+                Trace.WriteLine($"[HuyaDanmaku.Ws_OnOpen] error: {ex.Message}");
                 OnClose?.Invoke(this, ex.Message);
             }
         }
@@ -168,25 +169,51 @@ namespace AllLive.Core.Danmaku
 
         private void Ws_OnClose(object sender, CloseEventArgs e)
         {
-            OnClose?.Invoke(this, e.Reason);
+            try
+            {
+                OnClose?.Invoke(this, e.Reason);
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[HuyaDanmaku.Ws_OnClose] error invoking OnClose: {ex.Message}");
+            }
         }
 
         private void Ws_OnError(object sender, WebSocketSharp.ErrorEventArgs e)
         {
-            OnClose?.Invoke(this, e.Message);
+            try
+            {
+                OnClose?.Invoke(this, e.Message);
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[HuyaDanmaku.Ws_OnError] error invoking OnClose: {ex.Message}");
+            }
         }
 
         private void Timer_Elapsed(object sender, ElapsedEventArgs e)
         {
-            Heartbeat();
+            _ = HeartbeatAsync();
         }
 
-        public async void Heartbeat()
+        public void Heartbeat()
         {
-            await Task.Run(() =>
+            _ = HeartbeatAsync();
+        }
+
+        public async Task HeartbeatAsync()
+        {
+            try
             {
-                ws.Send(heartBeatData);
-            });
+                await Task.Run(() =>
+                {
+                    ws.Send(heartBeatData);
+                });
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[HuyaDanmaku.HeartbeatAsync] error: {ex.Message}");
+            }
         }
 
         public async Task Start(object args)

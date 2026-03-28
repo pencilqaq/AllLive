@@ -47,14 +47,20 @@ namespace AllLive.Core.Danmaku
         }
         private async void Ws_OnOpen(object sender, EventArgs e)
         {
-            await Task.Run(() =>
+            try
             {
-                //发送进房信息
-                ws.Send(SerializeDouyu($"type@=loginreq/roomid@={roomId}/"));
-                ws.Send(SerializeDouyu($"type@=joingroup/rid@={roomId}/gid@=-9999/"));
-            });
-            timer.Start();
-
+                await Task.Run(() =>
+                {
+                    //发送进房信息
+                    ws.Send(SerializeDouyu($"type@=loginreq/roomid@={roomId}/"));
+                    ws.Send(SerializeDouyu($"type@=joingroup/rid@={roomId}/gid@=-9999/"));
+                });
+                timer.Start();
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[DouyuDanmaku.Ws_OnOpen] error: {ex.Message}");
+            }
         }
         private void Ws_OnMessage(object sender, MessageEventArgs e)
         {
@@ -115,27 +121,53 @@ namespace AllLive.Core.Danmaku
 
         private void Ws_OnClose(object sender, CloseEventArgs e)
         {
-            OnClose?.Invoke(this, e.Reason);
+            try
+            {
+                OnClose?.Invoke(this, e.Reason);
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[DouyuDanmaku.Ws_OnClose] error invoking OnClose: {ex.Message}");
+            }
         }
 
         private void Ws_OnError(object sender, WebSocketSharp.ErrorEventArgs e)
         {
-            OnClose?.Invoke(this, e.Message);
+            try
+            {
+                OnClose?.Invoke(this, e.Message);
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[DouyuDanmaku.Ws_OnError] error invoking OnClose: {ex.Message}");
+            }
         }
 
 
 
         private void Timer_Elapsed(object sender, ElapsedEventArgs e)
         {
-            Heartbeat();
+            _ = HeartbeatAsync();
         }
 
-        public async void Heartbeat()
+        public void Heartbeat()
         {
-            await Task.Run(() =>
+            _ = HeartbeatAsync();
+        }
+
+        public async Task HeartbeatAsync()
+        {
+            try
             {
-                ws.Send(SerializeDouyu($"type@=mrkl/"));
-            });
+                await Task.Run(() =>
+                {
+                    ws.Send(SerializeDouyu($"type@=mrkl/"));
+                });
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[DouyuDanmaku.HeartbeatAsync] error: {ex.Message}");
+            }
         }
 
         public async Task Start(object args)

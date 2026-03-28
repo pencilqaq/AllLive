@@ -61,6 +61,18 @@ watch_time DATETIME);
                         createTable.ExecuteNonQuery();
                     }
 
+                    // 创建索引加速 room_id + site_name 查询
+                    using (var indexCmd = new SqliteCommand("CREATE INDEX IF NOT EXISTS idx_favorite_room_site ON Favorite(room_id, site_name)", connection))
+                    {
+                        indexCmd.ExecuteNonQuery();
+                    }
+                    using (var indexCmd = new SqliteCommand("CREATE INDEX IF NOT EXISTS idx_history_room_site ON History(room_id, site_name)", connection))
+                    {
+                        indexCmd.ExecuteNonQuery();
+                    }
+
+                    System.Diagnostics.Trace.WriteLine("[DatabaseHelper.InitializeDatabase] 数据库初始化完成，索引已创建");
+
                     db = connection;
                     initialized = true;
                 }
@@ -84,6 +96,7 @@ watch_time DATETIME);
 
             lock (_syncLock)
             {
+                System.Diagnostics.Trace.WriteLine($"[DatabaseHelper.AddFavorite] 添加收藏: {item.SiteName}-{item.RoomID}");
                 // 在同一锁内调用内部方法，避免重入死锁
                 if (CheckFavoriteCore(item.RoomID, item.SiteName) != null) { return; }
                 using (var command = new SqliteCommand())
@@ -133,6 +146,7 @@ watch_time DATETIME);
         {
             lock (_syncLock)
             {
+                System.Diagnostics.Trace.WriteLine($"[DatabaseHelper.DeleteFavorite] 删除收藏: id={id}");
                 using (var command = new SqliteCommand())
                 {
                     command.Connection = db;
@@ -147,6 +161,7 @@ watch_time DATETIME);
         {
             lock (_syncLock)
             {
+                System.Diagnostics.Trace.WriteLine("[DatabaseHelper.DeleteFavorite] 清空所有收藏");
                 using (var command = new SqliteCommand())
                 {
                     command.Connection = db;
@@ -193,6 +208,7 @@ watch_time DATETIME);
 
             lock (_syncLock)
             {
+                System.Diagnostics.Trace.WriteLine($"[DatabaseHelper.AddHistory] 添加/更新历史: {item.SiteName}-{item.RoomID}");
                 // 在同一锁内调用内部方法，避免重入死锁
                 var hisId = CheckHistoryCore(item.RoomID, item.SiteName);
                 if (hisId != null)
@@ -260,6 +276,7 @@ watch_time DATETIME);
         {
             lock (_syncLock)
             {
+                System.Diagnostics.Trace.WriteLine($"[DatabaseHelper.DeleteHistory] 删除历史: id={id}");
                 using (var command = new SqliteCommand())
                 {
                     command.Connection = db;
@@ -274,6 +291,7 @@ watch_time DATETIME);
         {
             lock (_syncLock)
             {
+                System.Diagnostics.Trace.WriteLine("[DatabaseHelper.DeleteHistory] 清空所有历史");
                 using (var command = new SqliteCommand())
                 {
                     command.Connection = db;

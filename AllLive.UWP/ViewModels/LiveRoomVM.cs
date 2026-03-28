@@ -238,6 +238,7 @@ namespace AllLive.UWP.ViewModels
         {
             try
             {
+                LogHelper.Log("[LiveRoomVM.LoadData] 开始加载房间数据", LogType.DEBUG);
                 Loading = true;
                 Site = site;
 
@@ -273,7 +274,10 @@ namespace AllLive.UWP.ViewModels
 
                 LiveDanmaku.NewMessage += LiveDanmaku_NewMessage;
                 LiveDanmaku.OnClose += LiveDanmaku_OnClose;
-                _messageProcessTimer.Start();
+                if (_messageProcessTimer != null && !_messageProcessTimer.Enabled)
+                {
+                    _messageProcessTimer.Start();
+                }
                 await LiveDanmaku.Start(result.DanmakuData);
                 if (detail.Status)
                 {
@@ -344,7 +348,7 @@ namespace AllLive.UWP.ViewModels
                 {
                     _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
                     {
-                        for (var i = 0; i < SuperChatMessages.Count; i++)
+                        for (var i = SuperChatMessages.Count - 1; i >= 0; i--)
                         {
                             var item = SuperChatMessages[i];
                             item.CountdownTime--;
@@ -431,8 +435,9 @@ namespace AllLive.UWP.ViewModels
                 Lines = ls;
                 CurrentLine = Lines[0];
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                LogHelper.Log("[LiveRoomVM.LoadPlayUrl] 加载播放地址失败", LogType.ERROR, ex);
                 Utils.ShowMessageToast("加载播放地址失败");
             }
 

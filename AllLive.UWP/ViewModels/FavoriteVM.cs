@@ -51,12 +51,12 @@ namespace AllLive.UWP.ViewModels
         {
             try
             {
+                LogHelper.Log("[FavoriteVM.LoadData] 开始加载收藏数据", LogType.DEBUG);
                 Loading = true;
-                foreach (var item in await DatabaseHelper.GetFavorites())
-                {
-                    Items.Add(item);
-                }
+                var list = await DatabaseHelper.GetFavorites();
+                Items = new ObservableCollection<FavoriteItem>(list);
                 IsEmpty = Items.Count == 0;
+                LogHelper.Log($"[FavoriteVM.LoadData] 加载完成, 共{Items.Count}条", LogType.DEBUG);
                 if (!IsEmpty)
                 {
                     LoadLiveStatus();
@@ -64,6 +64,7 @@ namespace AllLive.UWP.ViewModels
             }
             catch (Exception ex)
             {
+                LogHelper.Log("[FavoriteVM.LoadData] 加载收藏数据失败", LogType.ERROR, ex);
                 HandleError(ex);
             }
             finally
@@ -72,18 +73,32 @@ namespace AllLive.UWP.ViewModels
             }
         }
 
-        public void LoadLiveStatus()
+        public async void LoadLiveStatus()
         {
-            LoaddingLiveStatus = true;
-            System.Threading.Interlocked.Exchange(ref loadedCount, 0);
-            foreach (var item in Items)
+            try
             {
-                LoadLiveStatus(item);
+                LoaddingLiveStatus = true;
+                LogHelper.Log("[FavoriteVM.LoadLiveStatus] 开始批量加载直播状态", LogType.DEBUG);
+                var tasks = Items.Select(item => LoadLiveStatusAsync(item)).ToArray();
+                await Task.WhenAll(tasks);
+                LogHelper.Log("[FavoriteVM.LoadLiveStatus] 批量加载直播状态完成", LogType.DEBUG);
+            }
+            catch (Exception ex)
+            {
+                LogHelper.Log("[FavoriteVM.LoadLiveStatus] 批量加载直播状态失败", LogType.ERROR, ex);
+            }
+            finally
+            {
+                await Windows.ApplicationModel.Core.CoreApplication.MainView.Dispatcher.RunAsync(
+                    Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+                {
+                    Items = new ObservableCollection<FavoriteItem>(Items.OrderByDescending(x => (int)x.LiveStatus));
+                    LoaddingLiveStatus = false;
+                });
             }
         }
 
-        int loadedCount = 0;
-        public async void LoadLiveStatus(FavoriteItem item)
+        private async Task LoadLiveStatusAsync(FavoriteItem item)
         {
             try
             {
@@ -96,22 +111,7 @@ namespace AllLive.UWP.ViewModels
             }
             catch (Exception ex)
             {
-                LogHelper.Log($"获取直播状态失败:{item.SiteName}-{item.RoomID}", LogType.ERROR, ex);
-            }
-            finally
-            {
-                var currentCount = System.Threading.Interlocked.Increment(ref loadedCount);
-                if (currentCount == Items.Count)
-                {
-                    // 切换到UI线程更新集合
-                    await Windows.ApplicationModel.Core.CoreApplication.MainView.Dispatcher.RunAsync(
-                        Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
-                    {
-                        LoaddingLiveStatus = false;
-                        // 排序：直播 > 回放 > 未直播
-                        Items = new ObservableCollection<FavoriteItem>(Items.OrderByDescending(x => (int)x.LiveStatus));
-                    });
-                }
+                LogHelper.Log($"[FavoriteVM.LoadLiveStatusAsync] {item.SiteName}-{item.RoomID} 失败", LogType.ERROR, ex);
             }
         }
 
@@ -133,6 +133,7 @@ namespace AllLive.UWP.ViewModels
             }
             catch (Exception ex)
             {
+                LogHelper.Log("[FavoriteVM.RemoveItem] 删除收藏失败", LogType.ERROR, ex);
                 HandleError(ex);
             }
 
@@ -171,6 +172,7 @@ namespace AllLive.UWP.ViewModels
                 }
                 catch (Exception ex)
                 {
+                    LogHelper.Log("[FavoriteVM.Input] 导入收藏失败", LogType.ERROR, ex);
                     HandleError(ex);
                     Utils.ShowMessageToast("导入失败");
                 }
@@ -226,6 +228,7 @@ namespace AllLive.UWP.ViewModels
                 }
                 catch (Exception ex)
                 {
+                    LogHelper.Log("[FavoriteVM.Output] 导出收藏失败", LogType.ERROR, ex);
                     HandleError(ex);
                     Utils.ShowMessageToast("导出失败");
                 }
