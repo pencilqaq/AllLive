@@ -45,7 +45,7 @@
             IsItemClickEnabled="True"
             ItemClick="ls_ItemClick"
             ItemHeight="72"
-            ItemsSource="{x:Bind Path=historyVM.Items}"
+            ItemsSource="{x:Bind Path=historyVM.Items, Mode=OneWay}"
             SelectionMode="None"
             StretchContentForSingleRow="False">
             <controls:MyAdaptiveGridView.ItemContainerStyle>
@@ -91,6 +91,44 @@
                                 观看于<Run Text="{x:Bind Path=WatchTime}" />
                             </TextBlock>
                         </StackPanel>
+                        <StackPanel
+                            Grid.ColumnSpan="2"
+                            Margin="4"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal"
+                            Visibility="{x:Bind Path=IsLive, Mode=OneWay}">
+                            <Ellipse
+                                Width="8"
+                                Height="8"
+                                Margin="0,0,4,0"
+                                VerticalAlignment="Center"
+                                Fill="Green" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="Green"
+                                Text="直播中" />
+                        </StackPanel>
+                        <StackPanel
+                            Grid.ColumnSpan="2"
+                            Margin="4"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal"
+                            Visibility="{x:Bind Path=IsReplay, Mode=OneWay}">
+                            <Ellipse
+                                Width="8"
+                                Height="8"
+                                Margin="0,0,4,0"
+                                VerticalAlignment="Center"
+                                Fill="Orange" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="Orange"
+                                Text="回放中" />
+                        </StackPanel>
                     </Grid>
                 </DataTemplate>
             </controls:MyAdaptiveGridView.ItemTemplate>
@@ -103,5 +141,17 @@
             Visibility="{x:Bind Path=historyVM.IsEmpty, Mode=OneWay}">
             这里还什么都没有~
         </TextBlock>
+        <Border
+            Grid.Row="1"
+            Width="48"
+            Height="48"
+            Margin="12"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Background="{ThemeResource ButtonBackground}"
+            CornerRadius="24"
+            Visibility="{x:Bind Path=historyVM.LoaddingLiveStatus, Mode=OneWay}">
+            <ProgressRing Width="24" IsActive="True" />
+        </Border>
     </Grid>
 </Page>

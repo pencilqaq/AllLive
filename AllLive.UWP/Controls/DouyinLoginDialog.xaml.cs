@@ -1,11 +1,10 @@
 using AllLive.UWP.Helper;
+using Microsoft.Web.WebView2.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
-using Windows.Web.Http;
-using Windows.Web.Http.Filters;
 
 namespace AllLive.UWP.Controls
 {
@@ -20,30 +19,29 @@ namespace AllLive.UWP.Controls
             this.Loaded += DouyinLoginDialog_Loaded;
         }
 
-        private void DouyinLoginDialog_Loaded(object sender, RoutedEventArgs e)
+        private async void DouyinLoginDialog_Loaded(object sender, RoutedEventArgs e)
         {
-            var requestMsg = new HttpRequestMessage(HttpMethod.Get, new Uri("https://www.douyin.com/passport/general/login_guiding_strategy/?aid=6383"));
-            requestMsg.Headers.Add("User-Agent", CHROME_UA);
-            requestMsg.Headers.Add("Referer", "https://www.douyin.com");
-            webView.NavigateWithHttpRequestMessage(requestMsg);
+            try
+            {
+                txtStatus.Text = "正在初始化 WebView2...";
+                await webView.EnsureCoreWebView2Async();
+                webView.CoreWebView2.Settings.UserAgent = CHROME_UA;
+                webView.NavigationCompleted += WebView_NavigationCompleted;
+                webView.CoreWebView2.Navigate("https://www.douyin.com/passport/general/login_guiding_strategy/?aid=6383");
+            }
+            catch (Exception ex)
+            {
+                LogHelper.Log("WebView2初始化失败", LogType.ERROR, ex);
+                txtStatus.Text = "WebView2 初始化失败，请确保已安装 Edge WebView2 Runtime\n" + ex.Message;
+                txtStatus.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Red);
+            }
         }
 
-        private void WebView_NavigationStarting(WebView sender, WebViewNavigationStartingEventArgs args)
-        {
-        }
-
-        private void WebView_NavigationCompleted(WebView sender, WebViewNavigationCompletedEventArgs args)
+        private void WebView_NavigationCompleted(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
         {
             if (args.IsSuccess)
             {
                 txtStatus.Text = "请登录抖音账号，登录成功后点击「完成登录」";
-                try
-                {
-                    _ = sender.InvokeScriptAsync("eval", new[] {
-                        $"Object.defineProperty(navigator, 'userAgent', {{get: function(){{ return '{CHROME_UA}'; }}}});"
-                    });
-                }
-                catch { }
             }
             else
             {
@@ -56,9 +54,13 @@ namespace AllLive.UWP.Controls
             args.Cancel = true;
             try
             {
-                var filter = new HttpBaseProtocolFilter();
-                var cookieManager = filter.CookieManager;
-                var cookies = cookieManager.GetCookies(new Uri("https://www.douyin.com"));
+                if (webView.CoreWebView2 == null)
+                {
+                    txtStatus.Text = "WebView2 未初始化";
+                    return;
+                }
+
+                var cookies = await webView.CoreWebView2.CookieManager.GetCookiesAsync("https://www.douyin.com");
 
                 var cookieParts = new List<string>();
                 foreach (var cookie in cookies)

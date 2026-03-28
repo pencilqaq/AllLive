@@ -26,7 +26,21 @@ namespace AllLive.UWP.ViewModels
         public ICommand InputCommand { get; set; }
         public ICommand OutputCommand { get; set; }
 
-        public ObservableCollection<HistoryItem> Items { get; set; }
+        private ObservableCollection<HistoryItem> _items;
+        public ObservableCollection<HistoryItem> Items
+        {
+            get { return _items; }
+            set { _items = value; DoPropertyChanged("Items"); }
+        }
+
+        private bool _loadingLiveStatus;
+        public bool LoaddingLiveStatus
+        {
+            get { return _loadingLiveStatus; }
+            set { _loadingLiveStatus = value; DoPropertyChanged("LoaddingLiveStatus"); }
+        }
+
+        int loadedCount = 0;
 
         public async void LoadData()
         {
@@ -38,6 +52,10 @@ namespace AllLive.UWP.ViewModels
                     Items.Add(item);
                 }
                 IsEmpty = Items.Count == 0;
+                if (!IsEmpty)
+                {
+                    LoadLiveStatus();
+                }
             }
             catch (Exception ex)
             {
@@ -54,6 +72,48 @@ namespace AllLive.UWP.ViewModels
             base.Refresh();
             Items.Clear();
             LoadData();
+        }
+
+        public void LoadLiveStatus()
+        {
+            LoaddingLiveStatus = true;
+            System.Threading.Interlocked.Exchange(ref loadedCount, 0);
+            foreach (var item in Items)
+            {
+                LoadLiveStatus(item);
+            }
+        }
+
+        public async void LoadLiveStatus(HistoryItem item)
+        {
+            try
+            {
+                var site = MainVM.Sites.FirstOrDefault(x => x.Name == item.SiteName);
+                if (site != null)
+                {
+                    var status = await site.LiveSite.GetLiveStatus(item.RoomID);
+                    item.LiveStatus = status;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogHelper.Log($"获取直播状态失败:{item.SiteName}-{item.RoomID}", LogType.ERROR, ex);
+            }
+            finally
+            {
+                var currentCount = System.Threading.Interlocked.Increment(ref loadedCount);
+                if (currentCount == Items.Count)
+                {
+                    await Windows.ApplicationModel.Core.CoreApplication.MainView.Dispatcher.RunAsync(
+                        Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+                    {
+                        LoaddingLiveStatus = false;
+                        Items = new ObservableCollection<HistoryItem>(
+                            Items.OrderByDescending(x => (int)x.LiveStatus)
+                                 .ThenByDescending(x => x.WatchTime));
+                    });
+                }
+            }
         }
 
         public void RemoveItem(HistoryItem item)
