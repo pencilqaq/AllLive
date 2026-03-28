@@ -22,9 +22,9 @@ namespace AllLive.UWP.Controls
 
         private void DouyinLoginDialog_Loaded(object sender, RoutedEventArgs e)
         {
-            // 使用HttpRequestMessage设置Chrome UA，避免EdgeHTML被抖音拦截
-            var requestMsg = new HttpRequestMessage(HttpMethod.Get, new Uri("https://www.douyin.com"));
+            var requestMsg = new HttpRequestMessage(HttpMethod.Get, new Uri("https://www.douyin.com/passport/general/login_guiding_strategy/?aid=6383"));
             requestMsg.Headers.Add("User-Agent", CHROME_UA);
+            requestMsg.Headers.Add("Referer", "https://www.douyin.com");
             webView.NavigateWithHttpRequestMessage(requestMsg);
         }
 
@@ -37,7 +37,6 @@ namespace AllLive.UWP.Controls
             if (args.IsSuccess)
             {
                 txtStatus.Text = "请登录抖音账号，登录成功后点击「完成登录」";
-                // 注入UA覆盖脚本
                 try
                 {
                     _ = sender.InvokeScriptAsync("eval", new[] {
@@ -48,7 +47,7 @@ namespace AllLive.UWP.Controls
             }
             else
             {
-                txtStatus.Text = "页面加载失败，请重试";
+                txtStatus.Text = $"页面加载失败({args.WebErrorStatus})，请重试";
             }
         }
 
