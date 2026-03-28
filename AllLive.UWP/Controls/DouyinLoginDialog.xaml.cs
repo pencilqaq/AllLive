@@ -78,7 +78,7 @@ namespace AllLive.UWP.Controls
                 // 检查是否包含关键cookie（登录后才有的）
                 bool hasSessionId = cookieParts.Any(c =>
                     c.StartsWith("sessionid") ||
-                    c.StartsWith("passport_csrf_token") ||
+                    c.StartsWith("sid_tt") ||
                     c.StartsWith("sid_guard"));
 
                 if (!hasSessionId)

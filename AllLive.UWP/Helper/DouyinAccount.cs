@@ -54,7 +54,7 @@ namespace AllLive.UWP.Helper
             var site = MainVM.Sites.FirstOrDefault(x => x.SiteType == LiveSite.Douyin);
             if (site != null)
             {
-                (site.LiveSite as Douyin).UserCookie = Cookie;
+                (site.LiveSite as Douyin).SearchCookie = Cookie;
             }
         }
 

@@ -33,9 +33,9 @@ namespace AllLive.Core
         private const string DEFAULT_COOKIE = "ttwid=1%7CB1qls3GdnZhUov9o2NxOMxxYS2ff6OSvEWbv0ytbES4%7C1680522049%7C280d802d6d478e3e78d0c807f7c487e7ffec0ae4e5fdd6a0fe74c3c6af149511";
 
         /// <summary>
-        /// 用户设置的Cookie（登录后获取，用于搜索等需要认证的API）
+        /// 搜索专用Cookie（登录后获取，仅用于搜索API，不用于房间/分类等通用请求）
         /// </summary>
-        public string UserCookie { get; set; } = "";
+        public string SearchCookie { get; set; } = "";
 
         Dictionary<string, string> headers = new Dictionary<string, string>
         {
@@ -53,15 +53,8 @@ namespace AllLive.Core
                 return new Dictionary<string, string>(headers);
             }
             
-            // 优先使用用户登录的Cookie，否则使用默认Cookie
-            if (!string.IsNullOrEmpty(UserCookie))
-            {
-                headers["Cookie"] = UserCookie;
-            }
-            else
-            {
-                headers["Cookie"] = DEFAULT_COOKIE;
-            }
+            // 通用请求始终使用默认 ttwid（隐私隔离：登录 Cookie 仅用于搜索）
+            headers["Cookie"] = DEFAULT_COOKIE;
             // 返回副本
             return new Dictionary<string, string>(headers);
         }
@@ -151,19 +144,24 @@ namespace AllLive.Core
                 };
             }
             var json = JObject.Parse(resp);
-            var hasMore = (json["data"]["data"] as JArray).Count >= 15;
+            var dataArray = json["data"]?["data"] as JArray;
+            var hasMore = (dataArray?.Count ?? 0) >= 15;
             var items = new List<LiveRoomItem>();
-            foreach (var item in json["data"]["data"])
+            if (dataArray != null)
             {
-                var roomItem = new LiveRoomItem()
+                foreach (var item in dataArray)
                 {
-                    RoomID = item["web_rid"].ToString(),
-                    Title = item["room"]["title"].ToString(),
-                    Cover = item["room"]["cover"]["url_list"][0].ToString(),
-                    UserName = item["room"]["owner"]["nickname"].ToString(),
-                    Online = item["room"]["room_view_stats"]?["display_value"]?.ToObject<int>() ?? 0,
-                };
-                items.Add(roomItem);
+                    var coverUrlList = item["room"]?["cover"]?["url_list"] as JArray;
+                    var roomItem = new LiveRoomItem()
+                    {
+                        RoomID = item["web_rid"]?.ToString() ?? "",
+                        Title = item["room"]?["title"]?.ToString() ?? "",
+                        Cover = coverUrlList != null && coverUrlList.Count > 0 ? coverUrlList[0].ToString() : "",
+                        UserName = item["room"]?["owner"]?["nickname"]?.ToString() ?? "",
+                        Online = item["room"]?["room_view_stats"]?["display_value"]?.ToObject<int>() ?? 0,
+                    };
+                    items.Add(roomItem);
+                }
             }
             return new LiveCategoryResult()
             {
@@ -211,19 +209,24 @@ namespace AllLive.Core
                 };
             }
             var json = JObject.Parse(resp);
-            var hasMore = (json["data"]["data"] as JArray).Count >= 15;
+            var recDataArray = json["data"]?["data"] as JArray;
+            var hasMore = (recDataArray?.Count ?? 0) >= 15;
             var items = new List<LiveRoomItem>();
-            foreach (var item in json["data"]["data"])
+            if (recDataArray != null)
             {
-                var roomItem = new LiveRoomItem()
+                foreach (var item in recDataArray)
                 {
-                    RoomID = item["web_rid"].ToString(),
-                    Title = item["room"]["title"].ToString(),
-                    Cover = item["room"]["cover"]["url_list"][0].ToString(),
-                    UserName = item["room"]["owner"]["nickname"].ToString(),
-                    Online = item["room"]["room_view_stats"]?["display_value"]?.ToObject<int>() ?? 0,
-                };
-                items.Add(roomItem);
+                    var coverUrlList = item["room"]?["cover"]?["url_list"] as JArray;
+                    var roomItem = new LiveRoomItem()
+                    {
+                        RoomID = item["web_rid"]?.ToString() ?? "",
+                        Title = item["room"]?["title"]?.ToString() ?? "",
+                        Cover = coverUrlList != null && coverUrlList.Count > 0 ? coverUrlList[0].ToString() : "",
+                        UserName = item["room"]?["owner"]?["nickname"]?.ToString() ?? "",
+                        Online = item["room"]?["room_view_stats"]?["display_value"]?.ToObject<int>() ?? 0,
+                    };
+                    items.Add(roomItem);
+                }
             }
             return new LiveCategoryResult()
             {
@@ -258,14 +261,11 @@ namespace AllLive.Core
         private async Task<LiveRoomDetail> GetRoomDetailByRoomID(string roomId)
         {
             var roomData = await GetRoomDataByRoomID(roomId);
-            // Get WebRid from room info
-            var webRid = roomData["data"]["room"]["owner"]["web_rid"].ToString();
-            // Get user unique ID for danmaku
-            // Random number seems to work fine
+            var room = roomData["data"]?["room"];
+            var owner = room?["owner"];
+            var webRid = owner?["web_rid"]?.ToString() ?? "";
             var userUniqueId = GenerateRandomNumber(12).ToString();
-            var room = roomData["data"]["room"];
-            var owner = room["owner"];
-            var status = room["status"].ToObject<int>();
+            var status = room?["status"]?.ToObject<int>() ?? 4;
             // roomId is temporary, if status is 4 (not live), get room info by webRid
             if (status == 4)
             {
@@ -273,15 +273,16 @@ namespace AllLive.Core
                 return result;
             }
             var roomStatus = status == 2;
-            // Need to get cookie for danmaku websocket
             var headers = await GetRequestHeaders(forceRefresh: true);
+            var coverUrlList = room?["cover"]?["url_list"] as JArray;
+            var avatarUrlList = owner?["avatar_thumb"]?["url_list"] as JArray;
             return new LiveRoomDetail()
             {
                 RoomID = webRid,
-                Title = room["title"].ToString(),
-                Cover = roomStatus ? room["cover"]["url_list"][0].ToString() : "",
-                UserName = owner["nickname"].ToString(),
-                UserAvatar = owner["avatar_thumb"]["url_list"][0].ToString(),
+                Title = room?["title"]?.ToString() ?? "",
+                Cover = roomStatus && coverUrlList != null && coverUrlList.Count > 0 ? coverUrlList[0].ToString() : "",
+                UserName = owner?["nickname"]?.ToString() ?? "",
+                UserAvatar = avatarUrlList != null && avatarUrlList.Count > 0 ? avatarUrlList[0].ToString() : "",
                 Online = roomStatus
                   ? (room["room_view_stats"]?["display_value"]?.ToObject<int>() ?? 0)
                   : 0,
@@ -296,7 +297,7 @@ namespace AllLive.Core
                     UserId = userUniqueId,
                     Cookie = headers["Cookie"],
                 },
-                Data = roomStatus ? room["stream_url"] : null,
+                Data = roomStatus ? room?["stream_url"] : null,
             };
 
         }
@@ -330,23 +331,25 @@ namespace AllLive.Core
             
             // Get room data
             var data = await GetRoomDataApi(webRid);
-            var roomData = data["data"][0];
+            var dataArr = data["data"] as JArray;
+            var roomData = dataArr != null && dataArr.Count > 0 ? dataArr[0] : null;
+            if (roomData == null)
+            {
+                return new LiveRoomDetail() { RoomID = webRid, Status = false };
+            }
 
             var userData = data["user"];
-            var roomId = roomData["id_str"].ToString();
+            var roomId = roomData["id_str"]?.ToString() ?? "";
             Trace.WriteLine($"[RoomDetail] roomId={roomId}");
 
-            // Get user unique ID for danmaku
-            // Seems random number works fine
             var userUniqueId = GenerateRandomNumber(12).ToString();
             Trace.WriteLine($"[RoomDetail] userUniqueId={userUniqueId}");
 
             var owner = roomData["owner"];
 
-            var roomStatus = roomData["status"].ToObject<int>() == 2;
+            var roomStatus = (roomData["status"]?.ToObject<int>() ?? 0) == 2;
             Trace.WriteLine($"[RoomDetail] roomStatus={roomStatus}");
 
-            // Need to get cookie for danmaku websocket
             Trace.WriteLine($"[RoomDetail] Getting Cookie (forceRefresh=true)...");
             var headers = await GetRequestHeaders(forceRefresh: true);
             var cookie = headers.ContainsKey("Cookie") ? headers["Cookie"] : "";
@@ -354,17 +357,20 @@ namespace AllLive.Core
             Trace.WriteLine($"[RoomDetail] Cookie preview={cookie.Substring(0, Math.Min(100, cookie.Length))}...");
             
             Trace.WriteLine($"========== GetRoomDetailByWebRidApi Done ==========");
+            var apiCoverUrlList = roomData["cover"]?["url_list"] as JArray;
+            var apiOwnerAvatarList = owner?["avatar_thumb"]?["url_list"] as JArray;
+            var apiUserAvatarList = userData?["avatar_thumb"]?["url_list"] as JArray;
             return new LiveRoomDetail()
             {
                 RoomID = webRid,
-                Title = roomData["title"].ToString(),
-                Cover = roomStatus ? roomData["cover"]["url_list"][0].ToString() : "",
+                Title = roomData["title"]?.ToString() ?? "",
+                Cover = roomStatus && apiCoverUrlList != null && apiCoverUrlList.Count > 0 ? apiCoverUrlList[0].ToString() : "",
                 UserName = roomStatus
-                    ? owner["nickname"].ToString()
-                    : userData["nickname"].ToString(),
+                    ? (owner?["nickname"]?.ToString() ?? "")
+                    : (userData?["nickname"]?.ToString() ?? ""),
                 UserAvatar = roomStatus
-                    ? owner["avatar_thumb"]["url_list"][0].ToString()
-                    : userData["avatar_thumb"]["url_list"][0].ToString(),
+                    ? (apiOwnerAvatarList != null && apiOwnerAvatarList.Count > 0 ? apiOwnerAvatarList[0].ToString() : "")
+                    : (apiUserAvatarList != null && apiUserAvatarList.Count > 0 ? apiUserAvatarList[0].ToString() : ""),
                 Online = roomStatus
                     ? (roomData["room_view_stats"]?["display_value"]?.ToObject<int>() ?? 0)
                     : 0,
@@ -387,28 +393,30 @@ namespace AllLive.Core
         private async Task<LiveRoomDetail> GetRoomDetailByWebRidHtml(string webRid)
         {
             var roomData = await GetRoomDataHtml(webRid);
-            var roomId = roomData["roomStore"]["roomInfo"]["room"]["id_str"].ToString();
+            var roomId = roomData["roomStore"]?["roomInfo"]?["room"]?["id_str"]?.ToString() ?? "";
             var userUniqueId =
-                roomData["userStore"]["odin"]["user_unique_id"].ToString();
+                roomData["userStore"]?["odin"]?["user_unique_id"]?.ToString() ?? GenerateRandomNumber(12).ToString();
 
-            var room = roomData["roomStore"]["roomInfo"]["room"];
-            var owner = room["owner"];
-            var anchor = roomData["roomStore"]["roomInfo"]["anchor"];
-            var roomStatus = room["status"].ToObject<int>() == 2;
+            var room = roomData["roomStore"]?["roomInfo"]?["room"];
+            var owner = room?["owner"];
+            var anchor = roomData["roomStore"]?["roomInfo"]?["anchor"];
+            var roomStatus = (room?["status"]?.ToObject<int>() ?? 0) == 2;
 
-            // Need to get cookie for danmaku websocket
             var headers = await GetRequestHeaders(forceRefresh: true);
+            var htmlCoverUrlList = room?["cover"]?["url_list"] as JArray;
+            var htmlOwnerAvatarList = owner?["avatar_thumb"]?["url_list"] as JArray;
+            var htmlAnchorAvatarList = anchor?["avatar_thumb"]?["url_list"] as JArray;
             return new LiveRoomDetail()
             {
                 RoomID = webRid,
-                Title = room["title"].ToString(),
-                Cover = roomStatus ? room["cover"]["url_list"][0].ToString() : "",
+                Title = room?["title"]?.ToString() ?? "",
+                Cover = roomStatus && htmlCoverUrlList != null && htmlCoverUrlList.Count > 0 ? htmlCoverUrlList[0].ToString() : "",
                 UserName = roomStatus
-                    ? owner["nickname"].ToString()
-                    : anchor["nickname"].ToString(),
+                    ? (owner?["nickname"]?.ToString() ?? "")
+                    : (anchor?["nickname"]?.ToString() ?? ""),
                 UserAvatar = roomStatus
-                    ? owner["avatar_thumb"]["url_list"][0].ToString()
-                    : anchor["avatar_thumb"]["url_list"][0].ToString(),
+                    ? (htmlOwnerAvatarList != null && htmlOwnerAvatarList.Count > 0 ? htmlOwnerAvatarList[0].ToString() : "")
+                    : (htmlAnchorAvatarList != null && htmlAnchorAvatarList.Count > 0 ? htmlAnchorAvatarList[0].ToString() : ""),
                 Online = roomStatus
                     ? (room["room_view_stats"]?["display_value"]?.ToObject<int>() ?? 0)
                     : 0,
@@ -423,7 +431,7 @@ namespace AllLive.Core
                     UserId = userUniqueId,
                     Cookie = headers["Cookie"],
                 },
-                Data = roomStatus ? room["stream_url"] : null,
+                Data = roomStatus ? room?["stream_url"] : null,
             };
         }
         /// <summary>
@@ -435,26 +443,28 @@ namespace AllLive.Core
         {
             try
             {
-                var resp = await HttpUtil.Head($"https://live.douyin.com/{webRid}",
+                using (var resp = await HttpUtil.Head($"https://live.douyin.com/{webRid}",
                     headers: await GetRequestHeaders()
-                );
-                var dyCookie = "";
-                foreach (var item in resp.Headers.GetValues("Set-Cookie"))
+                ))
                 {
-                    var cookie = item.Split(';')[0];
-                    if (cookie.Contains("ttwid") || cookie.Contains("__ac_nonce") || cookie.Contains("msToken"))
+                    var dyCookie = "";
+                    foreach (var item in resp.Headers.GetValues("Set-Cookie"))
                     {
-                        dyCookie += $"{cookie};";
+                        var cookie = item.Split(';')[0];
+                        if (cookie.Contains("ttwid") || cookie.Contains("__ac_nonce") || cookie.Contains("msToken"))
+                        {
+                            dyCookie += $"{cookie};";
+                        }
                     }
-                }
                 
-                // 如果没有获取到Cookie，使用默认Cookie
-                if (string.IsNullOrEmpty(dyCookie))
-                {
-                    dyCookie = DEFAULT_COOKIE;
-                }
+                    // 如果没有获取到Cookie，使用默认Cookie
+                    if (string.IsNullOrEmpty(dyCookie))
+                    {
+                        dyCookie = DEFAULT_COOKIE;
+                    }
                 
-                return dyCookie;
+                    return dyCookie;
+                }
             }
             catch (Exception ex)
             {
@@ -548,16 +558,19 @@ namespace AllLive.Core
                 return Task.FromResult(qualities);
             }
             var data = roomDetail.Data as JToken;
-            var qulityList = data["live_core_sdk_data"]["pull_data"]["options"]["qualities"];
-            var streamData = data["live_core_sdk_data"]["pull_data"]["stream_data"].ToString();
+            var qulityList = data?["live_core_sdk_data"]?["pull_data"]?["options"]?["qualities"] as JArray;
+            if (qulityList == null) return Task.FromResult(qualities);
+            var streamData = data["live_core_sdk_data"]?["pull_data"]?["stream_data"]?.ToString() ?? "";
 
-            if (!streamData.StartsWith("{"))
+            if (string.IsNullOrEmpty(streamData) || !streamData.StartsWith("{"))
             {
-                var flvList = (data["flv_pull_url"] as JToken).Values().Select(c => c.ToString()).ToList();
-                var hlsList = (data["hls_pull_url_map"] as JToken).Values().Select(c => c.ToString()).ToList();
+                var flvPullUrl = data["flv_pull_url"] as JToken;
+                var hlsPullUrl = data["hls_pull_url_map"] as JToken;
+                var flvList = flvPullUrl != null ? flvPullUrl.Values().Select(c => c.ToString()).ToList() : new List<string>();
+                var hlsList = hlsPullUrl != null ? hlsPullUrl.Values().Select(c => c.ToString()).ToList() : new List<string>();
                 foreach (var quality in qulityList)
                 {
-                    int level = quality["level"].ToObject<int>();
+                    int level = quality["level"]?.ToObject<int>() ?? 1;
                     List<String> urls = new List<string>();
                     var flvIndex = flvList.Count - level;
                     if (flvIndex >= 0 && flvIndex < flvList.Count)
@@ -571,7 +584,7 @@ namespace AllLive.Core
                     }
                     var qualityItem = new LivePlayQuality()
                     {
-                        Quality = quality["name"].ToString(),
+                        Quality = quality["name"]?.ToString() ?? "",
                         Sort = level,
                         Data = urls,
                     };
@@ -584,27 +597,30 @@ namespace AllLive.Core
             else
             {
                 var qualityData = JObject.Parse(streamData)["data"] as JObject;
+                if (qualityData == null) return Task.FromResult(qualities);
                 foreach (var quality in qulityList)
                 {
                     List<string> urls = new List<string>();
-
-                    var flvUrl =
-                        qualityData[quality["sdk_key"].ToString()]?["main"]?["flv"]?.ToString();
+                    var sdkKey = quality["sdk_key"]?.ToString();
+                    var flvUrl = sdkKey != null
+                        ? qualityData[sdkKey]?["main"]?["flv"]?.ToString()
+                        : null;
 
                     if (flvUrl != null && flvUrl.Length > 0)
                     {
                         urls.Add(flvUrl);
                     }
-                    var hlsUrl =
-                        qualityData[quality["sdk_key"].ToString()]?["main"]?["hls"]?.ToString();
+                    var hlsUrl = sdkKey != null
+                        ? qualityData[sdkKey]?["main"]?["hls"]?.ToString()
+                        : null;
                     if (hlsUrl != null && hlsUrl.Length > 0)
                     {
                         urls.Add(hlsUrl);
                     }
                     var qualityItem = new LivePlayQuality()
                     {
-                        Quality = quality["name"].ToString(),
-                        Sort = quality["level"].ToObject<int>(),
+                        Quality = quality["name"]?.ToString() ?? "",
+                        Sort = quality["level"]?.ToObject<int>() ?? 0,
                         Data = urls,
                     };
                     if (urls.Count > 0)
@@ -734,10 +750,10 @@ namespace AllLive.Core
                     {"User-Agent", USER_AGENT},
                 };
 
-                // 搜索API需要用户Cookie
-                if (!string.IsNullOrEmpty(UserCookie))
+                // 搜索API需要登录Cookie（隐私隔离：仅搜索使用）
+                if (!string.IsNullOrEmpty(SearchCookie))
                 {
-                    searchHeaders["Cookie"] = UserCookie;
+                    searchHeaders["Cookie"] = SearchCookie;
                 }
                 else
                 {
