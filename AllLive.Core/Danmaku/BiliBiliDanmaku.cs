@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.IO.Compression;
+using BrotliSharpLib;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
