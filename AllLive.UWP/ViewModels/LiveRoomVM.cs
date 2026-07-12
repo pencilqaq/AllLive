@@ -416,6 +416,14 @@ namespace AllLive.UWP.ViewModels
         {
             try
             {
+                // 断流重连时尽量保持原线路索引（对齐 pure_live changeLine / refresh）
+                int preferIndex = 0;
+                if (Lines != null && CurrentLine != null)
+                {
+                    var idx = Lines.IndexOf(CurrentLine);
+                    if (idx >= 0) preferIndex = idx;
+                }
+
                 var data = await Site.GetPlayUrls(detail, CurrentQuality);
                 if (data.Count == 0)
                 {
@@ -433,7 +441,10 @@ namespace AllLive.UWP.ViewModels
                 }
 
                 Lines = ls;
-                CurrentLine = Lines[0];
+                if (preferIndex >= ls.Count) preferIndex = 0;
+                // 强制触发播放：先清空再赋值，避免引用相等导致不刷新
+                currentLine = null;
+                CurrentLine = Lines[preferIndex];
             }
             catch (Exception ex)
             {

@@ -24,13 +24,15 @@ namespace AllLive.Core
         public ILiveDanmaku GetDanmaku() => new HuyaDanmaku();
 
         private const string kUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-        private const string HYSDK_UA = "HYSDK(Windows, 30000002)_APP(pc_exe&7060000&official)_SDK(trans&2.32.3.5646)";
+        // 与 pure_live 最新 play_config.json / HYSDK_UA 保持一致（无逗号后空格，版本 7090000）
+        // ref: https://github.com/liuchuancong/pure_live assets/play_config.json
+        public const string HYSDK_UA = "HYSDK(Windows,30000002)_APP(pc_exe&7090000&official)_SDK(trans&2.35.0.5996)";
 
         private static readonly Dictionary<string, string> requestHeaders = new Dictionary<string, string>()
         {
-            { "Origin", "https://www.huya.com" },
-            { "Referer", "https://www.huya.com" },
-            { "User-Agent", kUserAgent },
+            { "Origin", "https://m.huya.com/" },
+            { "Referer", "https://m.huya.com/" },
+            { "User-Agent", HYSDK_UA },
         };
 
         private TupHttpHelper _tupClient;
@@ -176,9 +178,46 @@ namespace AllLive.Core
             {
                 yySid = profileInfo?["yyid"]?.ToInt64() ?? 0;
 
-                // 获取有效线路
-                var baseSteamInfoList = stream["baseSteamInfoList"] as JArray;
-                if (baseSteamInfoList != null)
+                // 线路解析对齐 pure_live：优先 flv.multiLine 匹配 baseSteamInfoList（更贴近实际可播 CDN）
+                var baseSteamInfoList = stream["baseSteamInfoList"] as JArray ?? new JArray();
+                var flvLines = stream["flv"]?["multiLine"] as JArray;
+
+                if (flvLines != null && flvLines.Count > 0)
+                {
+                    foreach (var item in flvLines)
+                    {
+                        var lineUrl = item["url"]?.ToString() ?? "";
+                        if (string.IsNullOrEmpty(lineUrl)) continue;
+
+                        var cdnType = item["cdnType"]?.ToString()
+                            ?? item["sCdnType"]?.ToString()
+                            ?? "";
+                        var currentStream = baseSteamInfoList.FirstOrDefault(e =>
+                            string.Equals(e["sCdnType"]?.ToString(), cdnType, StringComparison.OrdinalIgnoreCase));
+                        if (currentStream == null) continue;
+
+                        var channelId = currentStream["lChannelId"]?.ToInt64() ?? 0;
+                        if (topSid == 0) topSid = channelId;
+                        if (subSid == 0) subSid = currentStream["lSubChannelId"]?.ToInt64() ?? 0;
+
+                        var sFlvUrl = currentStream["sFlvUrl"]?.ToString() ?? "";
+                        if (string.IsNullOrEmpty(sFlvUrl)) continue;
+
+                        huyaLines.Add(new HuyaLineModel()
+                        {
+                            Line = sFlvUrl,
+                            LineType = HuyaLineType.FLV,
+                            FlvAntiCode = currentStream["sFlvAntiCode"]?.ToString() ?? "",
+                            HlsAntiCode = currentStream["sHlsAntiCode"]?.ToString() ?? "",
+                            StreamName = currentStream["sStreamName"]?.ToString() ?? "",
+                            CdnType = cdnType,
+                            PresenterUid = channelId,
+                        });
+                    }
+                }
+
+                // 回退：按优先级从 baseSteamInfoList 取 FLV 线路
+                if (huyaLines.Count == 0 && baseSteamInfoList.Count > 0)
                 {
                     var validLines = baseSteamInfoList.Where(line =>
                     {
@@ -191,23 +230,22 @@ namespace AllLive.Core
                     foreach (var item in validLines)
                     {
                         var sFlvUrl = item["sFlvUrl"]?.ToString() ?? "";
-                        if (!string.IsNullOrEmpty(sFlvUrl))
-                        {
-                            var channelId = item["lChannelId"]?.ToInt64() ?? 0;
-                            if (topSid == 0) topSid = channelId;
-                            if (subSid == 0) subSid = item["lSubChannelId"]?.ToInt64() ?? 0;
+                        if (string.IsNullOrEmpty(sFlvUrl)) continue;
 
-                            huyaLines.Add(new HuyaLineModel()
-                            {
-                                Line = sFlvUrl,
-                                LineType = HuyaLineType.FLV,
-                                FlvAntiCode = item["sFlvAntiCode"]?.ToString() ?? "",
-                                HlsAntiCode = item["sHlsAntiCode"]?.ToString() ?? "",
-                                StreamName = item["sStreamName"]?.ToString() ?? "",
-                                CdnType = item["sCdnType"]?.ToString() ?? "",
-                                PresenterUid = channelId,
-                            });
-                        }
+                        var channelId = item["lChannelId"]?.ToInt64() ?? 0;
+                        if (topSid == 0) topSid = channelId;
+                        if (subSid == 0) subSid = item["lSubChannelId"]?.ToInt64() ?? 0;
+
+                        huyaLines.Add(new HuyaLineModel()
+                        {
+                            Line = sFlvUrl,
+                            LineType = HuyaLineType.FLV,
+                            FlvAntiCode = item["sFlvAntiCode"]?.ToString() ?? "",
+                            HlsAntiCode = item["sHlsAntiCode"]?.ToString() ?? "",
+                            StreamName = item["sStreamName"]?.ToString() ?? "",
+                            CdnType = item["sCdnType"]?.ToString() ?? "",
+                            PresenterUid = channelId,
+                        });
                     }
                 }
 

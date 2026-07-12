@@ -64,6 +64,13 @@ namespace AllLive.UWP.Views
         private int _playRetryCount = 0;
         private const int MAX_PLAY_RETRY = 3;
 
+        // 缓冲卡顿检测（对齐 pure_live 线路失败后自动恢复）
+        private DateTime? _bufferingStartedAt;
+        private bool _isRecoveringFromStall;
+        private const int BUFFERING_STALL_SECONDS = 15;
+        // pure_live HYSDK UA，与 AllLive.Core.Huya.HYSDK_UA 一致
+        private const string HUYA_PLAY_UA = "HYSDK(Windows,30000002)_APP(pc_exe&7090000&official)_SDK(trans&2.35.0.5996)";
+
         public LiveRoomPage()
         {
             this.InitializeComponent();
@@ -243,13 +250,24 @@ namespace AllLive.UWP.Views
         #region 播放器事件
         private async void MediaPlayer_MediaEnded(MediaPlayer sender, object args)
         {
-            await this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+            await this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
             {
                 if (liveRoomVM.Living)
                 {
-                    // 直播流URL过期，重新加载播放地址
-                    _playRetryCount = 0;
-                    liveRoomVM.LoadPlayUrl();
+                    // 直播流 URL 过期 / CDN 主动断开：重新拉流（限制次数避免死循环）
+                    if (_playRetryCount < MAX_PLAY_RETRY)
+                    {
+                        _playRetryCount++;
+                        PlayerLoading.Visibility = Visibility.Visible;
+                        PlayerLoadText.Text = $"流结束，重连中({_playRetryCount}/{MAX_PLAY_RETRY})";
+                        await Task.Delay(800);
+                        liveRoomVM.LoadPlayUrl();
+                    }
+                    else
+                    {
+                        // 连续结束多次：走线路切换 / 完整刷新逻辑
+                        PlayError();
+                    }
                 }
                 else
                 {
@@ -262,6 +280,7 @@ namespace AllLive.UWP.Views
         {
             await this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
             {
+                _bufferingStartedAt = null;
                 PlayerLoading.Visibility = Visibility.Collapsed;
             });
 
@@ -279,6 +298,7 @@ namespace AllLive.UWP.Views
         {
             await this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
             {
+                _bufferingStartedAt = DateTime.UtcNow;
                 PlayerLoading.Visibility = Visibility.Visible;
                 PlayerLoadText.Text = "缓冲中";
             });
@@ -323,6 +343,7 @@ namespace AllLive.UWP.Views
                         PlayerLoadText.Text = "缓冲中";
                         break;
                     case MediaPlaybackState.Playing:
+                        _bufferingStartedAt = null;
                         PlayerLoading.Visibility = Visibility.Collapsed;
                         PlayBtnPlay.Visibility = Visibility.Collapsed;
                         PlayBtnPause.Visibility = Visibility.Visible;
@@ -550,6 +571,7 @@ namespace AllLive.UWP.Views
         {
             try
             {
+                _bufferingStartedAt = null;
                 PlayerLoading.Visibility = Visibility.Visible;
                 PlayerLoadText.Text = "加载中";
                 if (mediaPlayer != null)
@@ -565,6 +587,12 @@ namespace AllLive.UWP.Views
 
                 var config = new MediaSourceConfig();
                 config.FFmpegOptions.Add("rtsp_transport", "tcp");
+                // 直播流断线重连（对齐 pure_live fijk reconnect / network-timeout）
+                config.FFmpegOptions.Add("reconnect", "1");
+                config.FFmpegOptions.Add("reconnect_streamed", "1");
+                config.FFmpegOptions.Add("reconnect_delay_max", "5");
+                config.FFmpegOptions.Add("rw_timeout", "15000000"); // 15s, 微秒
+                config.FFmpegOptions.Add("timeout", "15000000");
                 var decoder = SettingHelper.GetValue<int>(SettingHelper.VIDEO_DECODER, Utils.IsXbox ? 1 : 0);
                 switch (decoder)
                 {
@@ -585,16 +613,9 @@ namespace AllLive.UWP.Views
                 }
                 else if (liveRoomVM.SiteName == "虎牙直播")
                 {
-                    //config.FFmpegOptions.Add("user_agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1");
-                    //config.FFmpegOptions.Add("referer", "https://m.huya.com");
-
-                    // from stream-rec url:https://github.com/stream-rec/stream-rec
-                    //var sysTs = Utils.GetTimeStamp() / 1000;
-                    //var validTs = 20000308;
-                    //var last8 = sysTs % 100000000;
-                    //var currentTs = last8 > validTs ? last8 : (validTs + sysTs / 100);
-                    //config.FFmpegOptions.Add("user_agent", $"HYSDK(Windows, {currentTs})");
-                    config.FFmpegOptions.Add("user_agent", "HYSDK(Windows, 30000002)_APP(pc_exe&7060000&official)_SDK(trans&2.32.3.5646)");
+                    // pure_live: headers = { user-agent: getHuYaUA(), origin: https://www.huya.com }
+                    config.FFmpegOptions.Add("user_agent", HUYA_PLAY_UA);
+                    config.FFmpegOptions.Add("headers", "Origin: https://www.huya.com\r\nReferer: https://www.huya.com/\r\n");
                 }
                 try
                 {
@@ -621,24 +642,40 @@ namespace AllLive.UWP.Views
 
         private async void PlayError()
         {
-            if (liveRoomVM.CurrentLine == null)
+            if (liveRoomVM.CurrentLine == null || liveRoomVM.Lines == null || liveRoomVM.Lines.Count == 0)
             {
                 return;
             }
-            // 当前线路播放失败，尝试下一个线路
+
+            // 播放中断流：优先重新拉流（antiCode/token 过期是虎牙断流主因）
+            // 初次打开失败：先切线路，全部失败后再重新加载
+            bool wasLiving = liveRoomVM.Living;
+            if (wasLiving && _playRetryCount < MAX_PLAY_RETRY)
+            {
+                _playRetryCount++;
+                PlayerLoading.Visibility = Visibility.Visible;
+                PlayerLoadText.Text = $"重连中({_playRetryCount}/{MAX_PLAY_RETRY})";
+                await Task.Delay(1500);
+                liveRoomVM.LoadPlayUrl();
+                return;
+            }
+
             var index = liveRoomVM.Lines.IndexOf(liveRoomVM.CurrentLine);
-            if (index == liveRoomVM.Lines.Count - 1)
+            if (index < 0 || index >= liveRoomVM.Lines.Count - 1)
             {
                 // 所有线路都失败，尝试重新加载播放地址（获取新的antiCode/token）
                 if (_playRetryCount < MAX_PLAY_RETRY)
                 {
                     _playRetryCount++;
+                    PlayerLoading.Visibility = Visibility.Visible;
+                    PlayerLoadText.Text = $"切换线路失败，刷新地址({_playRetryCount}/{MAX_PLAY_RETRY})";
                     await Task.Delay(1000);
                     liveRoomVM.LoadPlayUrl();
                 }
                 else
                 {
                     _playRetryCount = 0;
+                    _bufferingStartedAt = null;
                     PlayerLoading.Visibility = Visibility.Collapsed;
                     LogHelper.Log("直播加载失败", LogType.ERROR, new Exception("直播加载失败"));
                     await new MessageDialog($"啊，播放失败了，请尝试以下操作\r\n1、更换清晰度或线路\r\n2、请尝试在直播设置中打开/关闭硬解试试", "播放失败").ShowAsync();
@@ -646,6 +683,10 @@ namespace AllLive.UWP.Views
             }
             else
             {
+                // 对齐 pure_live line_fallback：失败后稍等再切下一线路
+                PlayerLoading.Visibility = Visibility.Visible;
+                PlayerLoadText.Text = $"切换线路 {index + 2}/{liveRoomVM.Lines.Count}";
+                await Task.Delay(800);
                 liveRoomVM.CurrentLine = liveRoomVM.Lines[index + 1];
             }
         }
@@ -710,6 +751,43 @@ namespace AllLive.UWP.Views
                 {
                     showControlsFlag++;
                 }
+            }
+
+            // 缓冲卡顿超时自动恢复（直播流僵死时不一定触发 MediaFailed/MediaEnded）
+            if (_bufferingStartedAt.HasValue
+                && !_isRecoveringFromStall
+                && liveRoomVM?.Living == true
+                && (DateTime.UtcNow - _bufferingStartedAt.Value).TotalSeconds >= BUFFERING_STALL_SECONDS)
+            {
+                _ = RecoverFromBufferingStall();
+            }
+        }
+
+        private async Task RecoverFromBufferingStall()
+        {
+            if (_isRecoveringFromStall) return;
+            _isRecoveringFromStall = true;
+            try
+            {
+                _bufferingStartedAt = null;
+                LogHelper.Log("缓冲卡顿超时，自动重连", LogType.INFO, new Exception($"stall>{BUFFERING_STALL_SECONDS}s"));
+                PlayerLoading.Visibility = Visibility.Visible;
+                PlayerLoadText.Text = "缓冲超时，重连中";
+                // 播放中优先重新拉流拿新 token/antiCode
+                if (_playRetryCount < MAX_PLAY_RETRY)
+                {
+                    _playRetryCount++;
+                    await Task.Delay(500);
+                    liveRoomVM.LoadPlayUrl();
+                }
+                else
+                {
+                    PlayError();
+                }
+            }
+            finally
+            {
+                _isRecoveringFromStall = false;
             }
         }
 
